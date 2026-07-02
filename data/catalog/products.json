@@ -1,0 +1,392 @@
+[
+  {
+    "id": "TSH-001",
+    "name": "Aster Core Tee",
+    "category": "t-shirts",
+    "description": "Soft everyday cotton t-shirt for casual outfits and easy layering.",
+    "price": 349.0,
+    "variants": [
+      {"sku": "TSH-001-BLK-S", "size": "S", "color": "black", "stock": 14},
+      {"sku": "TSH-001-BLK-M", "size": "M", "color": "black", "stock": 10},
+      {"sku": "TSH-001-WHT-L", "size": "L", "color": "white", "stock": 8}
+    ],
+    "tags": ["casual", "essentials", "cotton", "everyday"]
+  },
+  {
+    "id": "TSH-002",
+    "name": "Aster Relaxed Tee",
+    "category": "t-shirts",
+    "description": "Relaxed fit t-shirt with a draped silhouette and breathable knit fabric.",
+    "price": 389.0,
+    "variants": [
+      {"sku": "TSH-002-SAG-S", "size": "S", "color": "sage", "stock": 9},
+      {"sku": "TSH-002-SAG-M", "size": "M", "color": "sage", "stock": 6},
+      {"sku": "TSH-002-CRM-L", "size": "L", "color": "cream", "stock": 5}
+    ],
+    "tags": ["casual", "relaxed", "minimal", "soft"]
+  },
+  {
+    "id": "TSH-003",
+    "name": "Orbit Training Tee",
+    "category": "t-shirts",
+    "description": "Lightweight performance t-shirt designed for training and active movement.",
+    "price": 429.0,
+    "variants": [
+      {"sku": "TSH-003-NVY-S", "size": "S", "color": "navy", "stock": 12},
+      {"sku": "TSH-003-NVY-M", "size": "M", "color": "navy", "stock": 11},
+      {"sku": "TSH-003-GRY-L", "size": "L", "color": "gray", "stock": 7}
+    ],
+    "tags": ["athletic", "training", "breathable", "performance"]
+  },
+  {
+    "id": "TSH-004",
+    "name": "Luna Rib Tee",
+    "category": "t-shirts",
+    "description": "Slim ribbed t-shirt with stretch comfort and a polished everyday finish.",
+    "price": 399.0,
+    "variants": [
+      {"sku": "TSH-004-ROS-S", "size": "S", "color": "rose", "stock": 7},
+      {"sku": "TSH-004-ROS-M", "size": "M", "color": "rose", "stock": 6},
+      {"sku": "TSH-004-BLK-L", "size": "L", "color": "black", "stock": 4}
+    ],
+    "tags": ["fitted", "ribbed", "casual", "stretch"]
+  },
+  {
+    "id": "TSH-005",
+    "name": "Harbor Stripe Tee",
+    "category": "t-shirts",
+    "description": "Striped jersey t-shirt inspired by coastal basics and weekend wear.",
+    "price": 419.0,
+    "variants": [
+      {"sku": "TSH-005-BLU-S", "size": "S", "color": "blue", "stock": 10},
+      {"sku": "TSH-005-BLU-M", "size": "M", "color": "blue", "stock": 8},
+      {"sku": "TSH-005-RED-L", "size": "L", "color": "red", "stock": 5}
+    ],
+    "tags": ["striped", "casual", "weekend", "nautical"]
+  },
+  {
+    "id": "TSH-006",
+    "name": "Nova Oversized Tee",
+    "category": "t-shirts",
+    "description": "Oversized streetwear t-shirt with dropped shoulders and heavyweight cotton.",
+    "price": 459.0,
+    "variants": [
+      {"sku": "TSH-006-OLV-S", "size": "S", "color": "olive", "stock": 6},
+      {"sku": "TSH-006-OLV-M", "size": "M", "color": "olive", "stock": 7},
+      {"sku": "TSH-006-CHR-L", "size": "L", "color": "charcoal", "stock": 5}
+    ],
+    "tags": ["streetwear", "oversized", "cotton", "bold"]
+  },
+  {
+    "id": "PNT-001",
+    "name": "Marlow Slim Chino",
+    "category": "pants",
+    "description": "Slim chino pants for smart casual looks with comfortable stretch twill.",
+    "price": 799.0,
+    "variants": [
+      {"sku": "PNT-001-KHK-S", "size": "S", "color": "khaki", "stock": 10},
+      {"sku": "PNT-001-KHK-M", "size": "M", "color": "khaki", "stock": 8},
+      {"sku": "PNT-001-NVY-L", "size": "L", "color": "navy", "stock": 6}
+    ],
+    "tags": ["smart-casual", "office", "stretch", "twill"]
+  },
+  {
+    "id": "PNT-002",
+    "name": "Marlow Relaxed Chino",
+    "category": "pants",
+    "description": "Relaxed chino pants with clean lines and room through the leg.",
+    "price": 829.0,
+    "variants": [
+      {"sku": "PNT-002-STN-S", "size": "S", "color": "stone", "stock": 9},
+      {"sku": "PNT-002-STN-M", "size": "M", "color": "stone", "stock": 7},
+      {"sku": "PNT-002-OLV-L", "size": "L", "color": "olive", "stock": 5}
+    ],
+    "tags": ["casual", "relaxed", "twill", "versatile"]
+  },
+  {
+    "id": "PNT-003",
+    "name": "Axis Jogger",
+    "category": "pants",
+    "description": "Tapered jogger pants for workouts, travel, and off-duty comfort.",
+    "price": 749.0,
+    "variants": [
+      {"sku": "PNT-003-BLK-S", "size": "S", "color": "black", "stock": 11},
+      {"sku": "PNT-003-BLK-M", "size": "M", "color": "black", "stock": 9},
+      {"sku": "PNT-003-GRY-L", "size": "L", "color": "gray", "stock": 8}
+    ],
+    "tags": ["athletic", "travel", "comfort", "tapered"]
+  },
+  {
+    "id": "PNT-004",
+    "name": "Axis Cargo Pant",
+    "category": "pants",
+    "description": "Utility cargo pants with multiple pockets and durable fabric.",
+    "price": 899.0,
+    "variants": [
+      {"sku": "PNT-004-OLV-S", "size": "S", "color": "olive", "stock": 8},
+      {"sku": "PNT-004-OLV-M", "size": "M", "color": "olive", "stock": 7},
+      {"sku": "PNT-004-BLK-L", "size": "L", "color": "black", "stock": 4}
+    ],
+    "tags": ["utility", "streetwear", "pockets", "durable"]
+  },
+  {
+    "id": "PNT-005",
+    "name": "Drift Linen Pant",
+    "category": "pants",
+    "description": "Breathable linen blend pants for warm weather and relaxed styling.",
+    "price": 879.0,
+    "variants": [
+      {"sku": "PNT-005-SND-S", "size": "S", "color": "sand", "stock": 7},
+      {"sku": "PNT-005-SND-M", "size": "M", "color": "sand", "stock": 6},
+      {"sku": "PNT-005-WHT-L", "size": "L", "color": "white", "stock": 5}
+    ],
+    "tags": ["linen", "summer", "relaxed", "lightweight"]
+  },
+  {
+    "id": "PNT-006",
+    "name": "North Denim",
+    "category": "pants",
+    "description": "Straight-leg denim jeans with classic wash options and everyday durability.",
+    "price": 949.0,
+    "variants": [
+      {"sku": "PNT-006-IND-S", "size": "S", "color": "indigo", "stock": 12},
+      {"sku": "PNT-006-IND-M", "size": "M", "color": "indigo", "stock": 9},
+      {"sku": "PNT-006-BLK-L", "size": "L", "color": "black", "stock": 6}
+    ],
+    "tags": ["denim", "classic", "casual", "everyday"]
+  },
+  {
+    "id": "JKT-001",
+    "name": "Sierra Windbreaker",
+    "category": "jackets",
+    "description": "Packable windbreaker jacket made for light weather protection and city wear.",
+    "price": 1299.0,
+    "variants": [
+      {"sku": "JKT-001-NVY-S", "size": "S", "color": "navy", "stock": 6},
+      {"sku": "JKT-001-NVY-M", "size": "M", "color": "navy", "stock": 5},
+      {"sku": "JKT-001-SIL-L", "size": "L", "color": "silver", "stock": 4}
+    ],
+    "tags": ["outerwear", "lightweight", "weather", "packable"]
+  },
+  {
+    "id": "JKT-002",
+    "name": "Sierra Field Jacket",
+    "category": "jackets",
+    "description": "Structured field jacket with utility pockets and a polished outdoor feel.",
+    "price": 1499.0,
+    "variants": [
+      {"sku": "JKT-002-OLV-S", "size": "S", "color": "olive", "stock": 5},
+      {"sku": "JKT-002-OLV-M", "size": "M", "color": "olive", "stock": 4},
+      {"sku": "JKT-002-TAN-L", "size": "L", "color": "tan", "stock": 3}
+    ],
+    "tags": ["utility", "outerwear", "structured", "pockets"]
+  },
+  {
+    "id": "JKT-003",
+    "name": "Pulse Track Jacket",
+    "category": "jackets",
+    "description": "Sport-inspired track jacket with smooth knit fabric and contrast piping.",
+    "price": 1199.0,
+    "variants": [
+      {"sku": "JKT-003-BLK-S", "size": "S", "color": "black", "stock": 8},
+      {"sku": "JKT-003-BLK-M", "size": "M", "color": "black", "stock": 7},
+      {"sku": "JKT-003-BLU-L", "size": "L", "color": "blue", "stock": 5}
+    ],
+    "tags": ["athletic", "track", "sport", "layering"]
+  },
+  {
+    "id": "JKT-004",
+    "name": "Pulse Puffer Vest",
+    "category": "jackets",
+    "description": "Light insulated vest for transitional weather and easy layering.",
+    "price": 1399.0,
+    "variants": [
+      {"sku": "JKT-004-CHR-S", "size": "S", "color": "charcoal", "stock": 6},
+      {"sku": "JKT-004-CHR-M", "size": "M", "color": "charcoal", "stock": 5},
+      {"sku": "JKT-004-SND-L", "size": "L", "color": "sand", "stock": 4}
+    ],
+    "tags": ["insulated", "layering", "transitional", "lightweight"]
+  },
+  {
+    "id": "JKT-005",
+    "name": "Harbor Denim Jacket",
+    "category": "jackets",
+    "description": "Classic denim jacket with a sturdy feel and versatile silhouette.",
+    "price": 1349.0,
+    "variants": [
+      {"sku": "JKT-005-IND-S", "size": "S", "color": "indigo", "stock": 7},
+      {"sku": "JKT-005-IND-M", "size": "M", "color": "indigo", "stock": 6},
+      {"sku": "JKT-005-BLK-L", "size": "L", "color": "black", "stock": 4}
+    ],
+    "tags": ["denim", "classic", "casual", "layering"]
+  },
+  {
+    "id": "JKT-006",
+    "name": "Luna Cropped Jacket",
+    "category": "jackets",
+    "description": "Cropped jacket with a modern proportion and clean tailored finish.",
+    "price": 1449.0,
+    "variants": [
+      {"sku": "JKT-006-CRM-S", "size": "S", "color": "cream", "stock": 5},
+      {"sku": "JKT-006-CRM-M", "size": "M", "color": "cream", "stock": 4},
+      {"sku": "JKT-006-BLK-L", "size": "L", "color": "black", "stock": 3}
+    ],
+    "tags": ["tailored", "modern", "cropped", "minimal"]
+  },
+  {
+    "id": "SHO-001",
+    "name": "Orbit Runner",
+    "category": "shoes",
+    "description": "Responsive running shoes with lightweight cushioning and breathable mesh.",
+    "price": 1499.0,
+    "variants": [
+      {"sku": "SHO-001-BLK-S", "size": "S", "color": "black", "stock": 8},
+      {"sku": "SHO-001-BLK-M", "size": "M", "color": "black", "stock": 6},
+      {"sku": "SHO-001-WHT-L", "size": "L", "color": "white", "stock": 5}
+    ],
+    "tags": ["running", "athletic", "mesh", "cushioned"]
+  },
+  {
+    "id": "SHO-002",
+    "name": "Orbit Trail Runner",
+    "category": "shoes",
+    "description": "Trail running shoes with grippy outsole and stable support.",
+    "price": 1599.0,
+    "variants": [
+      {"sku": "SHO-002-OLV-S", "size": "S", "color": "olive", "stock": 6},
+      {"sku": "SHO-002-OLV-M", "size": "M", "color": "olive", "stock": 5},
+      {"sku": "SHO-002-BRN-L", "size": "L", "color": "brown", "stock": 4}
+    ],
+    "tags": ["trail", "running", "grip", "outdoor"]
+  },
+  {
+    "id": "SHO-003",
+    "name": "Metro Sneaker",
+    "category": "shoes",
+    "description": "Clean low-top sneakers for daily wear with cushioned comfort.",
+    "price": 1199.0,
+    "variants": [
+      {"sku": "SHO-003-WHT-S", "size": "S", "color": "white", "stock": 10},
+      {"sku": "SHO-003-WHT-M", "size": "M", "color": "white", "stock": 9},
+      {"sku": "SHO-003-BLK-L", "size": "L", "color": "black", "stock": 7}
+    ],
+    "tags": ["sneakers", "casual", "low-top", "everyday"]
+  },
+  {
+    "id": "SHO-004",
+    "name": "Metro Leather Sneaker",
+    "category": "shoes",
+    "description": "Leather sneakers with a sleek profile suited to polished casual dressing.",
+    "price": 1399.0,
+    "variants": [
+      {"sku": "SHO-004-WHT-S", "size": "S", "color": "white", "stock": 7},
+      {"sku": "SHO-004-WHT-M", "size": "M", "color": "white", "stock": 6},
+      {"sku": "SHO-004-NVY-L", "size": "L", "color": "navy", "stock": 4}
+    ],
+    "tags": ["leather", "smart-casual", "sleek", "minimal"]
+  },
+  {
+    "id": "SHO-005",
+    "name": "Harbor Slide",
+    "category": "shoes",
+    "description": "Comfort slide sandals for recovery, pool days, and casual errands.",
+    "price": 699.0,
+    "variants": [
+      {"sku": "SHO-005-BLK-S", "size": "S", "color": "black", "stock": 11},
+      {"sku": "SHO-005-BLK-M", "size": "M", "color": "black", "stock": 9},
+      {"sku": "SHO-005-SND-L", "size": "L", "color": "sand", "stock": 7}
+    ],
+    "tags": ["sandals", "comfort", "recovery", "casual"]
+  },
+  {
+    "id": "SHO-006",
+    "name": "Summit Hiker",
+    "category": "shoes",
+    "description": "Rugged hiking shoes with traction and support for long walks.",
+    "price": 1699.0,
+    "variants": [
+      {"sku": "SHO-006-BRN-S", "size": "S", "color": "brown", "stock": 5},
+      {"sku": "SHO-006-BRN-M", "size": "M", "color": "brown", "stock": 4},
+      {"sku": "SHO-006-CHR-L", "size": "L", "color": "charcoal", "stock": 3}
+    ],
+    "tags": ["hiking", "outdoor", "traction", "support"]
+  },
+  {
+    "id": "ACC-001",
+    "name": "Nova Cap",
+    "category": "accessories",
+    "description": "Classic six-panel cap with curved brim and adjustable back strap.",
+    "price": 299.0,
+    "variants": [
+      {"sku": "ACC-001-BLK-OS", "size": "OS", "color": "black", "stock": 16},
+      {"sku": "ACC-001-NVY-OS", "size": "OS", "color": "navy", "stock": 12},
+      {"sku": "ACC-001-SND-OS", "size": "OS", "color": "sand", "stock": 10}
+    ],
+    "tags": ["cap", "everyday", "adjustable", "casual"]
+  },
+  {
+    "id": "ACC-002",
+    "name": "Nova Beanie",
+    "category": "accessories",
+    "description": "Rib-knit beanie designed for cool weather and daily layering.",
+    "price": 279.0,
+    "variants": [
+      {"sku": "ACC-002-CHR-OS", "size": "OS", "color": "charcoal", "stock": 14},
+      {"sku": "ACC-002-CRM-OS", "size": "OS", "color": "cream", "stock": 11},
+      {"sku": "ACC-002-OLV-OS", "size": "OS", "color": "olive", "stock": 9}
+    ],
+    "tags": ["beanie", "winter", "ribbed", "casual"]
+  },
+  {
+    "id": "ACC-003",
+    "name": "Transit Backpack",
+    "category": "accessories",
+    "description": "Commuter backpack with laptop sleeve and organized internal pockets.",
+    "price": 999.0,
+    "variants": [
+      {"sku": "ACC-003-BLK-OS", "size": "OS", "color": "black", "stock": 8},
+      {"sku": "ACC-003-NVY-OS", "size": "OS", "color": "navy", "stock": 7},
+      {"sku": "ACC-003-OLV-OS", "size": "OS", "color": "olive", "stock": 6}
+    ],
+    "tags": ["backpack", "travel", "commuter", "utility"]
+  },
+  {
+    "id": "ACC-004",
+    "name": "Transit Crossbody",
+    "category": "accessories",
+    "description": "Compact crossbody bag for essentials with adjustable webbing strap.",
+    "price": 649.0,
+    "variants": [
+      {"sku": "ACC-004-BLK-OS", "size": "OS", "color": "black", "stock": 13},
+      {"sku": "ACC-004-CHR-OS", "size": "OS", "color": "charcoal", "stock": 10},
+      {"sku": "ACC-004-SND-OS", "size": "OS", "color": "sand", "stock": 8}
+    ],
+    "tags": ["bag", "crossbody", "utility", "minimal"]
+  },
+  {
+    "id": "ACC-005",
+    "name": "Studio Sock Pack",
+    "category": "accessories",
+    "description": "Three-pack athletic socks with cushioned sole and breathable knit.",
+    "price": 229.0,
+    "variants": [
+      {"sku": "ACC-005-WHT-S", "size": "S", "color": "white", "stock": 18},
+      {"sku": "ACC-005-WHT-M", "size": "M", "color": "white", "stock": 15},
+      {"sku": "ACC-005-BLK-L", "size": "L", "color": "black", "stock": 12}
+    ],
+    "tags": ["socks", "athletic", "pack", "cushioned"]
+  },
+  {
+    "id": "ACC-006",
+    "name": "Contour Belt",
+    "category": "accessories",
+    "description": "Minimal leather belt with matte buckle for clean daily styling.",
+    "price": 399.0,
+    "variants": [
+      {"sku": "ACC-006-BRN-S", "size": "S", "color": "brown", "stock": 9},
+      {"sku": "ACC-006-BRN-M", "size": "M", "color": "brown", "stock": 8},
+      {"sku": "ACC-006-BLK-L", "size": "L", "color": "black", "stock": 7}
+    ],
+    "tags": ["belt", "leather", "minimal", "daily"]
+  }
+]

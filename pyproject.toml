@@ -1,0 +1,40 @@
+[project]
+name = "langraph-ecomm"
+version = "0.1.0"
+description = "Intelligent e-commerce chatbot with FastAPI, LangGraph and RAG."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.139.0",
+    "httpx>=0.28.1",
+    "langgraph>=1.2.7",
+    "langchain>=0.3.27",
+    "langchain-chroma>=0.2.5",
+    "langchain-openai>=0.3.28",
+    "openai>=1.95.1",
+    "chromadb>=1.0.15",
+    "pydantic-settings>=2.10.1",
+    "structlog>=25.4.0",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.2",
+]
+
+[project.scripts]
+ecomm-agent-api = "ecomm_agent.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ecomm_agent"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
