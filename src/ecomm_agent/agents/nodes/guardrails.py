@@ -1,5 +1,6 @@
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.core.config import settings
+from ecomm_agent.rag.vectorstore import build_knowledge_base_rag_documents
 from ecomm_agent.services.catalog import load_catalog
 from ecomm_agent.services.guardrails import (
     build_allowed_vocabulary,
@@ -8,7 +9,11 @@ from ecomm_agent.services.guardrails import (
 
 
 CATALOG = load_catalog(settings.catalog_path)
-ALLOWED_VOCABULARY = build_allowed_vocabulary(CATALOG)
+KNOWLEDGE_DOCUMENTS = build_knowledge_base_rag_documents(settings.knowledge_base_dir)
+ALLOWED_VOCABULARY = build_allowed_vocabulary(
+    CATALOG,
+    extra_texts=[document.content for document in KNOWLEDGE_DOCUMENTS],
+)
 
 
 def guardrails_node(state: AgentState) -> AgentState:

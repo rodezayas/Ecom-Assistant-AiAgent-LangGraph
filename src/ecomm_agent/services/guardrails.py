@@ -24,7 +24,11 @@ def tokenize(text: str) -> list[str]:
     return [token.lower() for token in TOKEN_PATTERN.findall(text)]
 
 
-def build_allowed_vocabulary(products: list[Product]) -> set[str]:
+def build_allowed_vocabulary(
+    products: list[Product],
+    *,
+    extra_texts: list[str] | None = None,
+) -> set[str]:
     vocabulary = set(tokenize(BRAND_NAME))
     vocabulary.update(COMMERCE_TERMS)
 
@@ -36,6 +40,9 @@ def build_allowed_vocabulary(products: list[Product]) -> set[str]:
         for variant in product.variants:
             vocabulary.update(tokenize(variant.color))
             vocabulary.update(tokenize(variant.size))
+
+    for text in extra_texts or []:
+        vocabulary.update(tokenize(text))
 
     return vocabulary
 
@@ -61,7 +68,10 @@ def detect_out_of_scope_terms(text: str, allowed_vocabulary: set[str]) -> tuple[
     product_signals = [token for token in meaningful_tokens if token in allowed_vocabulary]
     has_budget_signal = any(token.isdigit() for token in tokens)
 
-    if product_signals or has_budget_signal:
+    if has_budget_signal:
+        return ()
+
+    if product_signals and len(product_signals) >= len(unknown_terms):
         return ()
 
     if len(unknown_terms) >= 2:
