@@ -38,6 +38,7 @@ That design is the core business value of the system.
 - `Chroma` can back semantic retrieval through local persistence
 - `Anthropic` is the primary text generation provider
 - `Groq` is the fallback generation provider
+- `OpenAI Embeddings` is used only for vector indexing and similarity search
 
 ### Flow Diagram
 
@@ -93,6 +94,12 @@ flowchart TD
 - Decision: use provider fallback for final response generation
 - Why: production systems need graceful degradation, not total failure on one provider outage
 - Business impact: better uptime and a stronger reliability story
+
+### 6. OpenAI only for embeddings, not for response generation
+
+- Decision: use `OpenAIEmbeddings` only in the retrieval layer
+- Why: the current project uses Anthropic and Groq for response generation, but embeddings are a separate capability and this implementation uses OpenAI exclusively for vectorization
+- Business impact: keeps the response path resilient across two generation providers while using a pragmatic, well-supported embedding layer for RAG
 
 For the full historical decision log, see [ADR.md](/home/rodezayas/LangGraph-Ecom-Assistant/ADR.md).
 
@@ -209,6 +216,8 @@ KNOWLEDGE_BASE_DIR=./data/knowledge
 ```
 
 `TELEGRAM_WEBHOOK_PUBLIC_URL` must be the public base URL, not the full webhook path. On startup, the app registers `/webhook/telegram` automatically when both Telegram settings are present.
+
+`OPENAI_API_KEY` and `OPENAI_EMBEDDING_MODEL` are only required for the embeddings layer. They are not used for final answer generation. The current generation path is `Anthropic -> Groq -> deterministic fallback`.
 
 ### Run locally
 

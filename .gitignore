@@ -5,6 +5,6 @@ __pycache__/
 .mypy_cache/
 .env
 data/vectorstore/
-MAINTENANCE.md
 .env.example
-.RAG.md
+RAG.md
+
