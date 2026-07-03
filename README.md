@@ -46,21 +46,21 @@ That design is the core business value of the system.
 
 ```mermaid
 flowchart TD
-    A[Telegram User Message] --> B[FastAPI Webhook /webhook/telegram]
-    B --> C[LangGraph Entry]
+    A[Telegram Message] --> B[Webhook POST]
+    B --> C[LangGraph]
     C --> D[Intent Router]
     D --> E[Guardrails]
-    E -->|Blocked| F[Honest Safe Response]
-    E -->|Allowed| G[Retrieval Layer]
-    G --> H[Chroma Retrieval When Indexed]
-    G --> I[Lexical Fallback When Chroma Is Missing]
-    H --> J[Deterministic Catalog and Knowledge Validation]
+    E -->|Blocked| F[Safe Reply]
+    E -->|Allowed| G[Retrieval]
+    G --> H[Chroma]
+    G --> I[Lexical Fallback]
+    H --> J[Verified Catalog and KB]
     I --> J
     J --> K[Response Generator]
     K --> L[Anthropic]
     L -->|Failure| M[Groq]
-    M -->|Failure| N[Deterministic Fallback Text]
-    L --> O[Telegram sendMessage]
+    M -->|Failure| N[Deterministic Fallback]
+    L --> O[Telegram Reply]
     M --> O
     N --> O
 ```
@@ -322,6 +322,57 @@ Already scaffolded in `render.yaml`:
 - The current implementation supports real Telegram reply delivery through `sendMessage`.
 - For local public testing, `ngrok` works well as the webhook ingress layer.
 - For stable hosting, use the Render deployment target in this repo instead of `ngrok`.
+
+## Production Smoke Tests
+
+Replace `https://your-service.onrender.com` with the real Render base URL.
+
+### Health
+
+```bash
+curl https://your-service.onrender.com/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+### Catalog detail
+
+```bash
+curl https://your-service.onrender.com/api/catalog/TSH-001
+```
+
+### Catalog list
+
+```bash
+curl https://your-service.onrender.com/api/catalog
+```
+
+### Chat webhook simulation
+
+This tests the same webhook endpoint Telegram uses, without needing to send a real Telegram message.
+
+```bash
+curl -X POST https://your-service.onrender.com/webhook/telegram \
+  -H 'content-type: application/json' \
+  -d '{
+    "update_id": 1,
+    "message": {
+      "message_id": 99,
+      "chat": {"id": 12345},
+      "text": "do you have black running shoes under 1500?"
+    }
+  }'
+```
+
+Expected behavior:
+
+- the endpoint returns `202`
+- the response includes `response_text`
+- if `TELEGRAM_BOT_TOKEN` is configured correctly in production, the app will also attempt `sendMessage` back to that same `chat.id`
 
 ## Catalog API
 
