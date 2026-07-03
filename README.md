@@ -1,17 +1,23 @@
 # Intelligent Ecom Agent
 
-Telegram demo for a fashion e-commerce assistant built with FastAPI, LangGraph, Chroma-backed RAG, deterministic inventory validation, and LLM response generation with `Anthropic -> Groq` fallback.
+Telegram demo for a fashion e-commerce assistant built with FastAPI, LangGraph, deterministic inventory validation, optional local Chroma-backed RAG, and LLM response generation with `Anthropic -> Groq` fallback.
 
 ## Current demo scope
 
 - Telegram webhook receiver
 - Real reply delivery with `sendMessage`
-- Chroma-backed retrieval for catalog, policies, FAQ, and size guide
+- Retrieval pipeline ready for local Chroma persistence plus lexical fallback
 - Deterministic filtering for price, category, color, size, and stock after retrieval
 - LangGraph orchestration for intent, retrieval, guardrails, response, and fallback
 - Anthropic primary generation with Groq fallback
 - Knowledge-base files for policies, FAQ, and size guide
 - Docker and local `uv` workflow
+
+## Current status
+
+- Real Telegram webhook flow has been tested successfully through `ngrok`.
+- The app is currently functional even without `data/vectorstore`, because product and knowledge retrieval fall back to lexical matching.
+- Full embedding-backed retrieval remains pending until `uv run ecomm-agent index-rag` is executed.
 
 ## Project qualities
 
@@ -61,8 +67,13 @@ KNOWLEDGE_BASE_DIR=./data/knowledge
 
 ```bash
 uv sync --extra dev
-uv run ecomm-agent index-rag
 uv run uvicorn ecomm_agent.main:app --reload
+```
+
+If you want Chroma-backed retrieval instead of lexical fallback, run:
+
+```bash
+uv run ecomm-agent index-rag
 ```
 
 ## Build the vector store
@@ -90,10 +101,26 @@ docker compose up --build
 
 1. Expose the API publicly with a tunnel or deployed URL.
 2. Set `TELEGRAM_WEBHOOK_PUBLIC_URL` to that public base URL.
-3. Run `uv run ecomm-agent index-rag`.
+3. Optionally run `uv run ecomm-agent index-rag` if you want embedding-backed retrieval.
 4. Start the app.
 5. Send a message to your bot in Telegram.
-6. Telegram posts to `/webhook/telegram`, the app runs the agent, retrieves verified context from Chroma, generates text with Anthropic or Groq, and sends the reply back to the same chat.
+6. Telegram posts to `/webhook/telegram`, the app runs the agent, retrieves verified context from Chroma when available or lexical fallback when not, generates text with Anthropic or Groq, and sends the reply back to the same chat.
+
+## Free hosting options
+
+The simplest free path for this repo is:
+
+1. `Render` free web service for FastAPI
+2. Telegram webhook pointed at the Render HTTPS URL
+3. Chroma kept local only if you are comfortable rebuilding the vector store on each deploy
+
+Tradeoffs:
+
+- `Render` free is the easiest always-public HTTPS option, but free instances can sleep and cause webhook cold starts.
+- `Railway` is often smoother operationally, but its free offering changes over time and may rely on credits instead of a permanent free tier.
+- `Fly.io` can work, but it is more operationally involved for a portfolio demo than Render.
+
+If you want a zero-cost demo right now, use `Render` for the app and keep lexical fallback enabled until you are ready to externalize the vector store.
 
 ## Internal maintenance
 

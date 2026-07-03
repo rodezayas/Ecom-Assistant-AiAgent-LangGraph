@@ -57,3 +57,17 @@
 - Why: The project goals include monitoring and guardrail visibility. Exposing these fields in the early scaffold makes debugging and evaluation easier before the real Telegram send-response flow is added.
 - Source: Assistant assumption.
   The user did not ask for this exact response contract, but it supports the stated monitoring and evaluation goals in `AGENTS.md`.
+
+## ADR-008: Use local embedded Chroma persistence instead of a standalone Chroma service
+
+- Decision: Keep vector retrieval implemented with `langchain-chroma` using a local persist directory at `VECTOR_STORE_PATH`, instead of running Chroma as a separate container or hosted service in the current phase.
+- Why: This keeps the demo operational with fewer moving parts, fits the local `uv` and Docker workflow already present in the repo, and lets the agent fall back to deterministic lexical retrieval when the persisted vector store has not been indexed yet.
+- Source: Assistant implementation based on repository code.
+  The current code in `src/ecomm_agent/rag/vectorstore.py` creates and loads a local persisted Chroma collection, and `docker-compose.yml` only defines the API service.
+
+## ADR-009: Validate Telegram webhook delivery first with `ngrok` before choosing long-term hosting
+
+- Decision: Use `ngrok` as the first public ingress path to validate the real Telegram webhook flow before committing to a deployment platform.
+- Why: Telegram webhook validation is the highest-signal integration checkpoint for this portfolio project. `ngrok` gives a fast path to confirm FastAPI routing, Telegram delivery, and reply latency before spending time on infrastructure decisions.
+- Source: User instruction and implementation outcome.
+  The user confirmed `ngrok` was installed and asked to test the real flow. The webhook was successfully registered and Telegram message delivery was validated through the public `ngrok` URL.
