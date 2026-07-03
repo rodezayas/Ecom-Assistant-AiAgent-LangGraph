@@ -20,9 +20,18 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = Field(default=None)
     telegram_api_base_url: str = Field(default="https://api.telegram.org")
     telegram_webhook_public_url: str | None = Field(default=None)
+    frontend_base_url: str | None = Field(default=None)
     vector_store_path: str = Field(default="./data/vectorstore")
     catalog_path: str = Field(default="./data/catalog/products.json")
     knowledge_base_dir: str = Field(default="./data/knowledge")
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://lovable.dev",
+        ]
+    )
+    cors_allowed_origin_regex: str = Field(default=r"https://.*\.lovable\.app")
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,5 +1,6 @@
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.services.inventory import filter_available_variants
+from ecomm_agent.services.urls import build_product_page_url
 
 
 def response_generator_node(state: AgentState) -> AgentState:
@@ -46,8 +47,12 @@ def response_generator_node(state: AgentState) -> AgentState:
         )
         if not variant_summary:
             variant_summary = "available variants require a broader size/color query"
-        lines.append(
+        product_line = (
             f"- {product.name} ({product.category}) - ${product.price:.2f}. {variant_summary}."
         )
+        product_url = build_product_page_url(product.id)
+        if product_url:
+            product_line = f"{product_line} View product: {product_url}"
+        lines.append(product_line)
 
     return state.model_copy(update={"response_text": "\n".join(lines)})

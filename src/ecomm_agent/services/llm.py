@@ -7,6 +7,7 @@ import httpx
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.core.config import settings
 from ecomm_agent.services.inventory import filter_available_variants
+from ecomm_agent.services.urls import build_product_page_url
 
 
 def _build_product_context(state: AgentState) -> str:
@@ -26,8 +27,9 @@ def _build_product_context(state: AgentState) -> str:
         )
         if not variant_text:
             variant_text = "No verified variants matched the requested size/color filters."
+        product_url = build_product_page_url(product.id) or "No verified product page URL configured."
         lines.append(
-            f"- {product.name} | category={product.category} | price=${product.price:.2f} | variants={variant_text}"
+            f"- {product.name} | category={product.category} | price=${product.price:.2f} | variants={variant_text} | product_url={product_url}"
         )
 
     return "\n".join(lines)
@@ -85,6 +87,7 @@ def _build_system_prompt() -> str:
         Answer in plain text suitable for Telegram.
         Use only the verified catalog and knowledge-base context provided to you.
         Never invent products, prices, sizes, colors, stock, shipping promises, or discounts.
+        If a verified product_url is provided in catalog context, you may include it in the reply.
         If no verified product is available, say so directly and suggest a broader search.
         Keep the answer concise and helpful.
         """

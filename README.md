@@ -12,6 +12,7 @@ It is designed to show:
 - separation between LLM-generated language and source-of-truth business data
 - deterministic business guardrails
 - real Telegram webhook integration
+- a read-only web catalog API for product page rendering
 - regression tests that protect critical store behavior
 
 ## Problem Statement
@@ -32,6 +33,7 @@ That design is the core business value of the system.
 ### Main components
 
 - `FastAPI` receives Telegram webhook events
+- `FastAPI` also exposes read-only catalog endpoints for the website layer
 - `LangGraph` orchestrates the intent, retrieval, guardrails, response, and fallback flow
 - `JSON catalog` acts as the deterministic product source of truth
 - `Markdown knowledge base` stores policies, FAQ, and size guidance
@@ -101,6 +103,12 @@ flowchart TD
 - Why: the current project uses Anthropic and Groq for response generation, but embeddings are a separate capability and this implementation uses OpenAI exclusively for vectorization
 - Business impact: keeps the response path resilient across two generation providers while using a pragmatic, well-supported embedding layer for RAG
 
+### 7. Read-only catalog API for Lovable and product pages
+
+- Decision: expose `GET /api/catalog` and `GET /api/catalog/{product_id}` from the same FastAPI app
+- Why: the website should consume the exact same catalog source of truth as the agent, without duplicating data or exposing internal agent mechanics
+- Business impact: keeps Telegram replies, product pages, and future storefront UI aligned on the same verified catalog data
+
 For the full historical decision log, see [ADR.md](/home/rodezayas/LangGraph-Ecom-Assistant/ADR.md).
 
 ## Business Rules
@@ -112,6 +120,7 @@ These are the rules the assistant is built around.
 - The assistant only answers with verified Nova Style catalog data.
 - The assistant must not invent products that do not exist in the catalog.
 - Price, size, color, and stock must come from deterministic data, never from the LLM.
+- The website layer must consume the same catalog source of truth as the agent.
 
 ### Policy truth rules
 
@@ -128,6 +137,11 @@ These are the rules the assistant is built around.
 
 - If the primary LLM provider fails, the fallback provider should be used.
 - If both providers fail, the system must still return a deterministic safe response.
+
+### API exposure rules
+
+- Public web access is limited to read-only catalog endpoints.
+- Guardrails, LangGraph internals, and RAG internals must not be exposed as public website endpoints.
 
 ## Tests That Protect Business Rules
 
@@ -165,6 +179,15 @@ This project includes tests that target business behavior, not only implementati
   bad handling of empty Telegram messages
   failures while sending replies back to Telegram
 
+### Catalog API behavior
+
+- [tests/test_catalog_api.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_catalog_api.py)
+- Protects against:
+  wrong product payload shape
+  missing-product requests returning an ambiguous response
+  write attempts against read-only catalog routes
+  browser CORS failures for Lovable origins
+
 ### Data and retrieval integrity
 
 - [tests/test_catalog.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_catalog.py)
@@ -180,6 +203,8 @@ This project includes tests that target business behavior, not only implementati
 - Telegram webhook flow has already been validated end to end with a real bot and `ngrok`.
 - The app currently works even without `data/vectorstore` because retrieval falls back to lexical matching.
 - Full embedding-backed retrieval remains pending until `uv run ecomm-agent index-rag` is executed.
+- The app now exposes read-only catalog endpoints for a Lovable-hosted website or product page layer.
+- The repo is prepared for deployment to Render from GitHub via `render.yaml`.
 
 ## Project Structure
 
@@ -205,6 +230,7 @@ tests/              business and integration protection
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_PUBLIC_URL=https://your-public-url
+FRONTEND_BASE_URL=https://alta-norma-fashion.lovable.app
 ANTHROPIC_API_KEY=...
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 GROQ_API_KEY=...
@@ -218,6 +244,8 @@ KNOWLEDGE_BASE_DIR=./data/knowledge
 `TELEGRAM_WEBHOOK_PUBLIC_URL` must be the public base URL, not the full webhook path. On startup, the app registers `/webhook/telegram` automatically when both Telegram settings are present.
 
 `OPENAI_API_KEY` and `OPENAI_EMBEDDING_MODEL` are only required for the embeddings layer. They are not used for final answer generation. The current generation path is `Anthropic -> Groq -> deterministic fallback`.
+
+`FRONTEND_BASE_URL` is the public Lovable frontend base URL. When it is configured, product-search responses can include links like `https://alta-norma-fashion.lovable.app/products/TSH-001`.
 
 ### Run locally
 
@@ -246,12 +274,82 @@ uv run pytest
 uv run ruff check src tests
 ```
 
+## Render Deployment
+
+This repo includes [render.yaml](/home/rodezayas/LangGraph-Ecom-Assistant/render.yaml) for GitHub-based deployment on Render.
+
+### What Render will use
+
+- runtime: Docker
+- health check: `/health`
+- public HTTPS base URL for:
+  Telegram webhook delivery
+  Lovable catalog fetches
+
+### Required Render environment variables
+
+Set these in Render before going live:
+
+- `TELEGRAM_WEBHOOK_PUBLIC_URL`
+  Use your final Render service URL, for example `https://your-service.onrender.com`
+- `TELEGRAM_BOT_TOKEN`
+- `ANTHROPIC_API_KEY`
+- `GROQ_API_KEY`
+- `OPENAI_API_KEY`
+
+Already scaffolded in `render.yaml`:
+
+- `ENVIRONMENT=production`
+- `FRONTEND_BASE_URL=https://alta-norma-fashion.lovable.app`
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
+- `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
+- `GROQ_MODEL=llama-3.3-70b-versatile`
+- `VECTOR_STORE_PATH=/tmp/data/vectorstore`
+
+### Production notes
+
+- Render replaces `ngrok` as the public backend URL.
+- Lovable should point `VITE_API_BASE_URL` to the final Render service URL.
+- Telegram should point `TELEGRAM_WEBHOOK_PUBLIC_URL` to the same Render service URL.
+- `VECTOR_STORE_PATH=/tmp/data/vectorstore` is ephemeral on Render. Until you move to durable vector storage, treat Chroma indexing there as rebuildable cache, not persistent infrastructure.
+- The app still works without a persisted vector store because lexical fallback remains active.
+
 ## Demo Notes
 
 - The webhook path is `POST /webhook/telegram`.
+- The public read-only catalog endpoints are `GET /api/catalog` and `GET /api/catalog/{product_id}`.
 - Telegram `chat.id` is used as the conversation thread identifier.
 - The current implementation supports real Telegram reply delivery through `sendMessage`.
 - For local public testing, `ngrok` works well as the webhook ingress layer.
+- For stable hosting, use the Render deployment target in this repo instead of `ngrok`.
+
+## Catalog API
+
+The website layer should consume the same source-of-truth catalog used by the agent.
+
+### Endpoints
+
+`GET /api/catalog`
+
+- Returns the full catalog as `list[Product]`
+- Useful for category pages, listing views, or a future `/catalogo` page in Lovable
+
+`GET /api/catalog/{product_id}`
+
+- Returns one product as `Product`
+- Returns `404` with a clear message if the product does not exist
+- Best endpoint for a product detail page fed by an agent-shared URL
+
+### Contract
+
+- The response shape reuses the existing internal `Product` schema
+- The data comes from the same `data/catalog/products.json` source already used by the agent
+- These routes are read-only and only expose `GET`
+
+### CORS
+
+- The FastAPI app allows Lovable browser origins for catalog fetches
+- This is required so the frontend can call the API directly from the browser
 
 ## Maintenance
 

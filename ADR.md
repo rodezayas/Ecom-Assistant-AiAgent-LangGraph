@@ -71,3 +71,47 @@
 - Why: Telegram webhook validation is the highest-signal integration checkpoint for this portfolio project. `ngrok` gives a fast path to confirm FastAPI routing, Telegram delivery, and reply latency before spending time on infrastructure decisions.
 - Source: User instruction and implementation outcome.
   The user confirmed `ngrok` was installed and asked to test the real flow. The webhook was successfully registered and Telegram message delivery was validated through the public `ngrok` URL.
+
+## ADR-010: Expose a read-only catalog API for the website layer
+
+- Decision: Add public read-only FastAPI endpoints for catalog access:
+  `GET /api/catalog`
+  `GET /api/catalog/{product_id}`
+- Why: the project now includes a website layer that must render product pages from the same source of truth used by the agent. Reusing the existing catalog service and `Product` schema avoids data duplication and keeps Telegram, the agent, and the website aligned.
+- Source: User instruction.
+  The user requested a website flow where the assistant can share product URLs and asked for a read-only endpoint that a Lovable page can consume.
+
+## ADR-011: Keep the website integration constrained to catalog data only
+
+- Decision: expose only catalog read endpoints to the web frontend and do not expose guardrails, LangGraph internals, or RAG internals.
+- Why: the website needs product data, not agent internals. Limiting the public API surface reduces accidental coupling, lowers security risk, and keeps the architecture clean.
+- Source: User instruction.
+  The user explicitly asked not to expose guardrails, RAG internals, or any agent-related internal endpoints.
+
+## ADR-012: Enable CORS specifically for Lovable-origin frontend access
+
+- Decision: configure FastAPI CORS to allow Lovable origins for read-only catalog fetches.
+- Why: browser-based frontend requests require CORS even when the endpoint itself is correct. This keeps the backend usable from the Lovable-hosted website without widening the API surface beyond the web use case.
+- Source: User instruction.
+  The user explicitly requested that the Lovable domain be added to CORS so the website can call the catalog API from the browser.
+
+## ADR-013: Use Render as the first production deployment target
+
+- Decision: prepare the project for deployment on `Render` using a repo-level `render.yaml` and Docker runtime.
+- Why: Render provides stable public HTTPS for the Telegram webhook, works well with GitHub-based deploys, and removes the operational fragility of depending on a local machine plus `ngrok`.
+- Source: User instruction.
+  The user stated they were already in Render and wanted the project prepared for production deployment from GitHub.
+
+## ADR-014: Respect platform-assigned ports and production-only dependencies in Docker
+
+- Decision: update the Docker runtime to bind Uvicorn to `${PORT}` and install only production dependencies with `uv sync --frozen --no-dev`.
+- Why: platforms like Render inject the runtime port dynamically, and production images should avoid carrying development-only dependencies when they are not required to serve the app.
+- Source: Assistant implementation for production readiness.
+  The existing Dockerfile bound the app to a fixed port and installed the full dependency set; those defaults are fine locally but weaker for hosted deployment.
+
+## ADR-015: Treat local vector persistence as ephemeral in Render
+
+- Decision: configure `VECTOR_STORE_PATH` for Render under `/tmp/data/vectorstore` and document that local vector persistence is ephemeral in this hosting model.
+- Why: Render web services do not provide durable local filesystem guarantees in the same way a managed vector database does. Until the project moves to external vector storage, lexical fallback and optional rebuilds remain the safest production behavior.
+- Source: Assistant implementation constrained by current architecture.
+  The project still uses local embedded Chroma and has not yet been migrated to durable external vector storage.
