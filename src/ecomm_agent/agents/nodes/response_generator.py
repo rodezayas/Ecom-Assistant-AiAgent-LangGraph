@@ -7,12 +7,12 @@ def response_generator_node(state: AgentState) -> AgentState:
     if state.guardrail_blocked:
         if state.guardrail_reason == "prompt_injection":
             message = (
-                "I can only help with verified Nova Style catalog information. "
+                "I can only help with verified Alta Norma Fashion catalog information. "
                 "Ask about products, prices, colors, sizes, or stock."
             )
         else:
             message = (
-                "I can only answer with verified catalog data from Nova Style. "
+                "I can only answer with verified catalog data from Alta Norma Fashion. "
                 "Ask about products, prices, sizes, colors, or availability."
             )
         return state.model_copy(update={"response_text": message})
@@ -28,7 +28,7 @@ def response_generator_node(state: AgentState) -> AgentState:
         return state.model_copy(
             update={
                 "response_text": (
-                    "I can help you find Nova Style products and confirm verified prices, "
+                    "I can help you find Alta Norma Fashion products and confirm verified prices, "
                     "sizes, colors, stock, shipping, returns, and size guidance."
                 )
             }

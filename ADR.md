@@ -35,7 +35,7 @@
 - Decision: Model brand context as the union of:
   catalog-derived words from product names, categories, descriptions, tags, colors, and sizes
   fixed commerce terms
-  the store brand name `Nova Style`
+  the store brand name `Alta Norma Fashion`
 - Why: This keeps scope detection tied to the actual store inventory and avoids relying on a model to decide whether a message belongs to the catalog domain.
 - Source: Assistant assumption constrained by user instruction.
   The user required context filtering around the brand, but did not define a method. I chose catalog-derived vocabulary because it aligns with the source-of-truth design in `AGENTS.md`.

@@ -28,7 +28,7 @@ def test_out_of_scope_query_falls_back_honestly() -> None:
     assert state.guardrail_blocked is True
     assert state.guardrail_reason == "out_of_scope"
     assert state.response_text
-    assert "Nova Style catalog questions" in state.response_text
+    assert "Alta Norma Fashion catalog questions" in state.response_text
 
 
 def test_prompt_injection_is_blocked() -> None:

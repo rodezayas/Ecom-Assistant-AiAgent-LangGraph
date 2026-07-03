@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file is the internal maintenance reference for the Nova Style Telegram agent.
+This file is the internal maintenance reference for the Alta Norma Fashion Telegram agent.
 
 ## AI models in use
 

@@ -20,5 +20,5 @@ async def build_reply_text(state: AgentState) -> str:
         return llm_response
 
     return state.response_text or (
-        "I can help with verified Nova Style products, prices, colors, sizes, and stock."
+        "I can help with verified Alta Norma Fashion products, prices, colors, sizes, and stock."
     )

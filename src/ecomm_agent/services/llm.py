@@ -83,7 +83,7 @@ def _build_user_prompt(state: AgentState) -> str:
 def _build_system_prompt() -> str:
     return dedent(
         """
-        You are Nova Style's Telegram sales assistant.
+        You are Alta Norma Fashion's Telegram sales assistant.
         Answer in plain text suitable for Telegram.
         Use only the verified catalog and knowledge-base context provided to you.
         Never invent products, prices, sizes, colors, stock, shipping promises, or discounts.

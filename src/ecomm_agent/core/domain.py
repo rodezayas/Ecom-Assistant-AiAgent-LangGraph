@@ -1,4 +1,4 @@
-BRAND_NAME = "Nova Style"
+BRAND_NAME = "Alta Norma Fashion"
 
 SUPPORTED_CATEGORIES = {
     "t-shirts",

@@ -1,6 +1,8 @@
 # Intelligent Ecom Agent
 
-Telegram sales assistant for a fashion e-commerce store, built to demonstrate production-minded AI engineering with FastAPI, LangGraph, deterministic guardrails, and optional Chroma-backed RAG.
+Telegram sales assistant for Alta Norma Fashion, built to demonstrate production-minded AI engineering with FastAPI, LangGraph, deterministic guardrails, and optional Chroma-backed RAG.
+
+Public Telegram bot: `t.me/AltaNormaFashion_bot`
 
 ## What This Project Proves
 
@@ -117,7 +119,7 @@ These are the rules the assistant is built around.
 
 ### Catalog truth rules
 
-- The assistant only answers with verified Nova Style catalog data.
+- The assistant only answers with verified Alta Norma Fashion catalog data.
 - The assistant must not invent products that do not exist in the catalog.
 - Price, size, color, and stock must come from deterministic data, never from the LLM.
 - The website layer must consume the same catalog source of truth as the agent.

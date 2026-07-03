@@ -2,7 +2,7 @@
 
 ## Do you have a physical store?
 
-Nova Style currently sells online only.
+Alta Norma Fashion currently sells online only.
 
 ## Do you offer international shipping?
 
