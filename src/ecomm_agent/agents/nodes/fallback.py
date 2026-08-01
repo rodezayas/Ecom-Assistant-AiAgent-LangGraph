@@ -1,7 +1,25 @@
+"""Fallback node.
+
+Produces an honest deterministic reply when the conversation cannot be
+completed normally: guardrail-blocked messages, searches with no verified
+results, or an unavailable catalog. The fallback never fabricates products,
+prices, or stock.
+"""
+
 from ecomm_agent.agents.state import AgentState
 
 
 def fallback_node(state: AgentState) -> AgentState:
+    """Build a safe, honest fallback reply for the current state.
+
+    Args:
+        state: Agent state that was blocked by guardrails or produced no
+            verified retrieval results.
+
+    Returns:
+        A copy of the state with ``response_text`` set to the appropriate
+        fallback message.
+    """
     if state.guardrail_blocked:
         if state.guardrail_reason == "prompt_injection":
             message = (
@@ -18,8 +36,6 @@ def fallback_node(state: AgentState) -> AgentState:
             "I currently support Alta Norma Fashion products, shipping, returns, payments, "
             "and size guidance. Try asking about those topics directly."
         )
-    elif state.retrieval_reason == "catalog_unavailable":
-        message = "The catalog is not available right now, so I cannot verify products or stock."
     else:
         message = (
             "I could not find a verified catalog match for that request. "

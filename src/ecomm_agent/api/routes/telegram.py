@@ -1,3 +1,11 @@
+"""Telegram webhook route.
+
+Receives Telegram updates, runs them through the agent graph, builds the reply
+text, and sends it back to the originating chat. The response body mirrors the
+agent state so guardrail and retrieval behavior is transparent for debugging
+and monitoring.
+"""
+
 import logging
 
 from fastapi import APIRouter, status
@@ -14,6 +22,15 @@ logger = logging.getLogger(__name__)
 async def telegram_webhook(
     update: TelegramUpdate,
 ) -> dict[str, str | int | bool | list[str] | None]:
+    """Process a Telegram update and reply to the chat.
+
+    Args:
+        update: The Telegram update payload.
+
+    Returns:
+        A dict reporting the outcome: thread id, guardrail status, response
+        text, whether the Telegram reply was sent, and any Telegram error.
+    """
     chat_id = update.message.chat.id if update.message else None
     text = update.message.text if update.message and update.message.text else ""
     if not chat_id or not text.strip():

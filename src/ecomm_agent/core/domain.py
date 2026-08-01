@@ -1,13 +1,17 @@
+"""Shared domain vocabulary and constants.
+
+Central place for the brand name, the fixed commerce vocabulary, the safe
+stopword list, and the prompt-injection trigger phrases used by both the
+intent router and the guardrail layer. Keeping these constants in one module
+avoids duplicating domain knowledge across services.
+"""
+
+# Human-facing brand name used in system prompts and fallback replies.
 BRAND_NAME = "Alta Norma Fashion"
 
-SUPPORTED_CATEGORIES = {
-    "t-shirts",
-    "pants",
-    "jackets",
-    "shoes",
-    "accessories",
-}
-
+# Fixed commerce vocabulary. A message containing any of these tokens is
+# classified by the intent router as a product search. Colors, sizes, and
+# common price keywords are included so simple store queries are recognized.
 COMMERCE_TERMS = {
     "buy",
     "price",
@@ -64,6 +68,9 @@ COMMERCE_TERMS = {
     "grey",
 }
 
+# Tokens that are ignored when measuring message scope. They carry no
+# domain signal and would otherwise inflate the unknown-term count used to
+# decide whether a request is out of scope.
 SAFE_STOPWORDS = {
     "a",
     "about",
@@ -104,6 +111,9 @@ SAFE_STOPWORDS = {
     "you",
 }
 
+# Exact substrings treated as prompt-injection attempts. Detection is a
+# simple case-insensitive containment check, so these must be distinctive
+# phrases unlikely to appear in legitimate product or policy questions.
 PROMPT_INJECTION_PATTERNS = (
     "ignore previous instructions",
     "ignore all previous instructions",

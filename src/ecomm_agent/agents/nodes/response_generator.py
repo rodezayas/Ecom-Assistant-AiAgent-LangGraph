@@ -1,9 +1,33 @@
+"""Response generation node.
+
+Builds a deterministic reply from verified state. Product replies list the
+retrieved products with their verified prices, available variants, and
+product page URLs; general questions list the retrieved knowledge snippets.
+This node never invents data -- it renders what retrieval produced.
+"""
+
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.services.inventory import filter_available_variants
 from ecomm_agent.services.urls import build_product_page_url
 
 
 def response_generator_node(state: AgentState) -> AgentState:
+    """Compose the deterministic reply text for the current state.
+
+    Order of precedence:
+
+    - Guardrail-blocked messages get a canned safe reply.
+    - General questions render verified knowledge snippets, or a generic
+      capability message when nothing was retrieved.
+    - Product searches render verified matches with prices, in-stock
+      variants, and (when configured) product page URLs.
+
+    Args:
+        state: Agent state with retrieval and guardrail results populated.
+
+    Returns:
+        A copy of the state with ``response_text`` set.
+    """
     if state.guardrail_blocked:
         if state.guardrail_reason == "prompt_injection":
             message = (

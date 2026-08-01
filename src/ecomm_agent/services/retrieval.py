@@ -1,3 +1,12 @@
+"""Retrieval service.
+
+Unified entry point for product and knowledge retrieval. Tries semantic
+retrieval through the persisted Chroma vector store first and falls back to
+deterministic lexical matching when the vector store is unavailable or
+unindexed. Verified products are always resolved back through the catalog
+source of truth.
+"""
+
 from __future__ import annotations
 
 from langchain_core.documents import Document
@@ -11,8 +20,13 @@ from ecomm_agent.services.guardrails import tokenize
 
 
 CATALOG = load_catalog(settings.catalog_path)
+"""Catalog loaded once at import time from the configured path."""
+
 PRODUCT_LOOKUP = {product.id: product for product in CATALOG}
+"""Maps product ids to :class:`Product` objects for fast resolution."""
+
 KNOWLEDGE_DOCUMENTS = build_knowledge_base_rag_documents(settings.knowledge_base_dir)
+"""Knowledge-base documents built once at import time for lexical fallback."""
 
 
 def _query_vector_store(
@@ -21,6 +35,18 @@ def _query_vector_store(
     source_type: str,
     limit: int,
 ) -> list[Document]:
+    """Run a similarity search against the persisted Chroma store.
+
+    Args:
+        query: The user query text.
+        source_type: Metadata filter (``product``, ``policy``, ``faq``, or
+            ``size_guide``).
+        limit: Maximum number of documents to return.
+
+    Returns:
+        The matching documents, or an empty list when the vector store has
+        not been indexed.
+    """
     vector_store = load_vector_store()
     if vector_store is None:
         return []
@@ -32,6 +58,21 @@ def _query_vector_store(
 
 
 def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str | None, str | None, str | None, float | None]:
+    """Retrieve products matching a free-text query.
+
+    Semantic retrieval is attempted first; retrieved ids are resolved against
+    the catalog and filtered by the extracted deterministic filters, then
+    re-ranked lexically. If semantic retrieval yields nothing (or the vector
+    store is unavailable), a full lexical catalog search is performed.
+
+    Args:
+        query: The user query text.
+        limit: Maximum number of products to return.
+
+    Returns:
+        A tuple of ``(products, category, color, size, price_ceiling)`` where
+        the filters are those extracted from the query.
+    """
     filters = extract_search_filters(query, CATALOG)
     try:
         documents = _query_vector_store(query, source_type="product", limit=limit * 4)
@@ -74,6 +115,19 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
 
 
 def retrieve_knowledge(query: str, *, limit: int = 3) -> list[KnowledgeSnippet]:
+    """Retrieve knowledge-base snippets matching a free-text query.
+
+    Tries semantic retrieval per source type (policy, FAQ, size guide); when
+    nothing is retrieved, falls back to lexical token-overlap scoring over the
+    knowledge documents.
+
+    Args:
+        query: The user query text.
+        limit: Maximum number of snippets to return.
+
+    Returns:
+        A list of :class:`KnowledgeSnippet` objects, ordered by relevance.
+    """
     source_types = ("policy", "faq", "size_guide")
     snippets: list[KnowledgeSnippet] = []
 

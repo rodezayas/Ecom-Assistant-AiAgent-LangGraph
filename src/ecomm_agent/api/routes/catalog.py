@@ -1,3 +1,10 @@
+"""Catalog API routes.
+
+Read-only endpoints exposing the same source-of-truth catalog used by the
+agent, so the website layer can render product pages without duplicating data.
+Only ``GET`` is exposed.
+"""
+
 from fastapi import APIRouter, HTTPException, status
 
 from ecomm_agent.core.config import settings
@@ -8,16 +15,37 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 
 def _load_catalog() -> list[Product]:
+    """Load the catalog from the configured path.
+
+    Returns:
+        The full validated product catalog.
+    """
     return load_catalog(settings.catalog_path)
 
 
 @router.get("", response_model=list[Product])
 def list_catalog() -> list[Product]:
+    """Return the full product catalog.
+
+    Returns:
+        The complete list of catalog products.
+    """
     return _load_catalog()
 
 
 @router.get("/{product_id}", response_model=Product)
 def get_catalog_product(product_id: str) -> Product:
+    """Return a single catalog product by id.
+
+    Args:
+        product_id: The product identifier (e.g. ``TSH-001``).
+
+    Returns:
+        The matching product.
+
+    Raises:
+        HTTPException: With status 404 when the product does not exist.
+    """
     product = next(
         (item for item in _load_catalog() if item.id == product_id),
         None,

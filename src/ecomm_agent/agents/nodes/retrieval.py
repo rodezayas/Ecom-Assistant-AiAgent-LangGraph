@@ -1,8 +1,26 @@
+"""Retrieval node.
+
+Executes retrieval for the classified intent: product search queries the
+catalog, while general questions query the knowledge base. The extracted
+filters (category, color, size, price ceiling) are written back to state so
+downstream nodes and the LLM only ever see verified data.
+"""
+
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.services.retrieval import retrieve_knowledge, retrieve_products
 
 
 def retrieval_node(state: AgentState) -> AgentState:
+    """Run catalog or knowledge retrieval depending on the intent.
+
+    Args:
+        state: Agent state with ``intent`` populated by the intent router.
+
+    Returns:
+        A copy of the state with the retrieved products/knowledge and the
+        extracted request filters. ``retrieval_reason`` is set to
+        ``no_results`` when nothing is found.
+    """
     retrieval_reason = None
 
     if state.intent == "product_search":

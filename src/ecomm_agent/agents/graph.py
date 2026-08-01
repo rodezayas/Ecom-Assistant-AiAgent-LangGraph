@@ -1,3 +1,26 @@
+"""LangGraph orchestration.
+
+Wires the agent nodes into a compiled graph and defines the conditional
+routing between them. The graph topology:
+
+::
+
+    START -> intent_router -> retrieval -> guardrails -> response_generator -> END
+                                  |              |
+                                  +-> guardrails -> fallback -> END
+
+Intent routing:
+
+- ``product_search`` and ``general_question`` proceed to retrieval.
+- Any other intent proceeds directly to guardrails (and then fallback).
+
+Guardrail routing:
+
+- A blocked message always goes to the fallback node.
+- A search with no results (products or knowledge) goes to the fallback node.
+- Otherwise the message reaches the response generator.
+"""
+
 from langgraph.graph import END, START, StateGraph
 
 from ecomm_agent.agents.nodes.fallback import fallback_node
@@ -9,16 +32,30 @@ from ecomm_agent.agents.state import AgentState
 
 
 def route_after_intent(state: AgentState) -> str:
+    """Decide the next node after intent classification.
+
+    Args:
+        state: Current agent state with a populated ``intent``.
+
+    Returns:
+        ``"retrieval"`` for search and general questions, otherwise
+        ``"guardrails"``.
+    """
     if state.intent in {"product_search", "general_question"}:
         return "retrieval"
     return "guardrails"
 
 
-def route_after_retrieval(state: AgentState) -> str:
-    return "guardrails"
-
-
 def route_after_guardrails(state: AgentState) -> str:
+    """Decide the next node after the guardrail evaluation.
+
+    Args:
+        state: Current agent state after guardrail checks.
+
+    Returns:
+        ``"fallback"`` when the message was blocked or produced no verified
+        results, otherwise ``"response_generator"``.
+    """
     if state.guardrail_blocked:
         return "fallback"
     if state.intent == "product_search" and not state.retrieved_products:
@@ -29,6 +66,15 @@ def route_after_guardrails(state: AgentState) -> str:
 
 
 def build_graph():
+    """Build and compile the LangGraph state machine.
+
+    Registers the five nodes (``intent_router``, ``retrieval``, ``guardrails``,
+    ``response_generator``, ``fallback``), connects them with the routing
+    functions above, and returns a compiled graph ready to ``invoke``.
+
+    Returns:
+        A compiled LangGraph ``StateGraph`` instance.
+    """
     graph = StateGraph(AgentState)
     graph.add_node("intent_router", intent_router_node)
     graph.add_node("retrieval", retrieval_node)
@@ -45,13 +91,7 @@ def build_graph():
             "guardrails": "guardrails",
         },
     )
-    graph.add_conditional_edges(
-        "retrieval",
-        route_after_retrieval,
-        {
-            "guardrails": "guardrails",
-        },
-    )
+    graph.add_edge("retrieval", "guardrails")
     graph.add_conditional_edges(
         "guardrails",
         route_after_guardrails,

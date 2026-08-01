@@ -1,3 +1,15 @@
+"""Deterministic catalog access and lexical search.
+
+Loads the source-of-truth product catalog from JSON and provides:
+- normalization of user-provided sizes and categories,
+- extraction of search filters (category, color, size, price ceiling),
+- a lexical scoring search over product name/description/category/tags.
+
+This module is the deterministic counterpart of semantic retrieval: it is
+used both as the primary search path and as the fallback when the vector
+store is unavailable.
+"""
+
 import json
 import re
 from dataclasses import dataclass
@@ -8,6 +20,7 @@ from ecomm_agent.services.guardrails import tokenize
 from ecomm_agent.schemas.catalog import Product
 
 
+# Maps free-text size words to the canonical size labels used by the catalog.
 SIZE_NORMALIZATION = {
     "small": "S",
     "s": "S",
@@ -19,6 +32,7 @@ SIZE_NORMALIZATION = {
     "extra-large": "XL",
 }
 
+# Maps each canonical category to the set of synonyms that should match it.
 CATEGORY_SYNONYMS = {
     "t-shirts": {"t-shirt", "tshirts", "tshirt", "tee", "tees", "shirt", "shirts"},
     "pants": {"pant", "pants", "trouser", "trousers", "jogger", "joggers", "jeans"},
@@ -27,6 +41,8 @@ CATEGORY_SYNONYMS = {
     "accessories": {"accessory", "accessories", "cap", "caps", "bag", "bags", "belt"},
 }
 
+# Matches price ceilings phrased as "under/below/less than/up to $X" or
+# "$X or less/max".
 PRICE_PATTERN = re.compile(
     r"(?:under|below|less than|up to)\s*\$?\s*(\d+(?:\.\d+)?)|\$?\s*(\d+(?:\.\d+)?)\s*(?:or less|max)",
     re.IGNORECASE,
@@ -35,14 +51,34 @@ PRICE_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class SearchFilters:
+    """Structured filters extracted from a free-text search query."""
+
     category: str | None = None
+    """Canonical category matched via :data:`CATEGORY_SYNONYMS`, if any."""
+
     color: str | None = None
+    """Color matched against the catalog's variant colors, if any."""
+
     size: str | None = None
+    """Normalized size (S/M/L/XL) matched via :data:`SIZE_NORMALIZATION`."""
+
     price_ceiling: float | None = None
+    """Maximum price extracted from the query, if any."""
+
     query_terms: tuple[str, ...] = ()
+    """Remaining meaningful tokens used for lexical scoring."""
 
 
 def load_catalog(path: str) -> list[Product]:
+    """Load and validate the product catalog from a JSON file.
+
+    Args:
+        path: Filesystem path to the catalog JSON.
+
+    Returns:
+        A list of validated :class:`Product` objects. Returns an empty list
+        when the file does not exist.
+    """
     catalog_path = Path(path)
     if not catalog_path.exists():
         return []
@@ -51,6 +87,19 @@ def load_catalog(path: str) -> list[Product]:
 
 
 def extract_search_filters(text: str, catalog: list[Product]) -> SearchFilters:
+    """Extract structured filters from a free-text query.
+
+    Recognizes category synonyms, colors that exist in the catalog, normalized
+    sizes, and price ceilings. Remaining meaningful tokens become
+    ``query_terms`` for lexical scoring.
+
+    Args:
+        text: The user's free-text query.
+        catalog: The product catalog used to build the set of known colors.
+
+    Returns:
+        A :class:`SearchFilters` instance with the extracted values.
+    """
     tokens = tokenize(text)
     catalog_colors = {
         variant.color.lower()
@@ -99,6 +148,22 @@ def search_catalog(
     *,
     limit: int = 3,
 ) -> tuple[list[Product], SearchFilters]:
+    """Lexically score and rank products against a query.
+
+    Products are filtered by category, price ceiling, and (when requested)
+    size/color availability, then scored by how many query terms appear in
+    the product's name, description, category, and tags. Category, color,
+    size, and price matches add bonus weight.
+
+    Args:
+        text: The user's free-text query.
+        catalog: Product candidates to search.
+        limit: Maximum number of products to return.
+
+    Returns:
+        A tuple of the top-ranked products and the extracted
+        :class:`SearchFilters`.
+    """
     filters = extract_search_filters(text, catalog)
     scored_products: list[tuple[int, Product]] = []
 

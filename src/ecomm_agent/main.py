@@ -1,3 +1,10 @@
+"""FastAPI application entry point.
+
+Creates the FastAPI app, configures CORS for the frontend, registers the
+catalog/health/telegram routers, and (in the lifespan) configures logging and
+registers the Telegram webhook when the required settings are present.
+"""
+
 from contextlib import asynccontextmanager
 import logging
 
@@ -16,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Application startup/shutdown lifecycle.
+
+    Configures logging on startup and registers the Telegram webhook at
+    ``{TELEGRAM_WEBHOOK_PUBLIC_URL}/webhook/telegram`` when both the bot token
+    and the public URL are configured. Logs a warning when the token is set
+    but the public URL is missing.
+    """
     configure_logging()
 
     if settings.telegram_bot_token and settings.telegram_webhook_public_url:
@@ -39,6 +53,14 @@ async def lifespan(_: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """Build and configure the FastAPI application.
+
+    Registers CORS for the allowed frontend origins and mounts the catalog,
+    health, and Telegram routers.
+
+    Returns:
+        The configured :class:`FastAPI` application.
+    """
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -61,3 +83,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+"""Module-level FastAPI application instance used by the ASGI server."""

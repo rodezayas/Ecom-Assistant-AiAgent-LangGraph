@@ -14,7 +14,6 @@ dependencies = [
     "openai>=1.95.1",
     "chromadb>=1.0.15",
     "pydantic-settings>=2.10.1",
-    "structlog>=25.4.0",
     "uvicorn[standard]>=0.35.0",
 ]
 
