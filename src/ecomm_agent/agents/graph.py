@@ -76,13 +76,17 @@ def build_graph():
         A compiled LangGraph ``StateGraph`` instance.
     """
     graph = StateGraph(AgentState)
+    # Register the five nodes of the conversation flow.
     graph.add_node("intent_router", intent_router_node)
     graph.add_node("retrieval", retrieval_node)
     graph.add_node("guardrails", guardrails_node)
     graph.add_node("response_generator", response_generator_node)
     graph.add_node("fallback", fallback_node)
 
+    # Every message starts at the intent router.
     graph.add_edge(START, "intent_router")
+    # Search and general questions go to retrieval; anything else skips
+    # straight to guardrails (and from there to the fallback node).
     graph.add_conditional_edges(
         "intent_router",
         route_after_intent,
@@ -91,7 +95,9 @@ def build_graph():
             "guardrails": "guardrails",
         },
     )
+    # Retrieval always hands off to guardrails for the final safety check.
     graph.add_edge("retrieval", "guardrails")
+    # Blocked or empty searches end in fallback; successful turns render a reply.
     graph.add_conditional_edges(
         "guardrails",
         route_after_guardrails,
@@ -100,6 +106,7 @@ def build_graph():
             "fallback": "fallback",
         },
     )
+    # Both terminal nodes complete the graph.
     graph.add_edge("response_generator", END)
     graph.add_edge("fallback", END)
     return graph.compile()

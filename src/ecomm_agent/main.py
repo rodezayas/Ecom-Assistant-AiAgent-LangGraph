@@ -18,6 +18,7 @@ from ecomm_agent.core.config import settings
 from ecomm_agent.observability.logging import configure_logging
 from ecomm_agent.services.telegram import set_webhook
 
+# Module-level logger for startup, webhook, and lifecycle messages.
 logger = logging.getLogger(__name__)
 
 

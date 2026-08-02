@@ -14,6 +14,7 @@ from ecomm_agent.schemas.telegram import TelegramUpdate
 from ecomm_agent.services.chatbot import build_reply_text, process_user_message
 from ecomm_agent.services.telegram import send_text_message
 
+# Telegram webhook endpoint; receives updates and replies to the originating chat.
 router = APIRouter(prefix="/webhook", tags=["telegram"])
 logger = logging.getLogger(__name__)
 

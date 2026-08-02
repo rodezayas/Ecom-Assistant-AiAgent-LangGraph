@@ -102,15 +102,18 @@ def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
+        # A "##" header starts a new chunk; flush the previous one first.
         if line.startswith("## "):
             if current_title and current_lines:
                 sections.append((current_title, " ".join(current_lines).strip()))
             current_title = line.removeprefix("## ").strip()
             current_lines = []
             continue
+        # Accumulate body lines, skipping the top-level "#" document title.
         if line and not line.startswith("# "):
             current_lines.append(line)
 
+    # Flush the final section left after the loop ends.
     if current_title and current_lines:
         sections.append((current_title, " ".join(current_lines).strip()))
 
@@ -263,6 +266,7 @@ def index_documents(
         The populated :class:`Chroma` vector store.
     """
     persist_path = Path(persist_directory)
+    # Ensure the persist directory exists so Chroma can write its collection.
     persist_path.mkdir(parents=True, exist_ok=True)
 
     vector_store = Chroma(
@@ -273,11 +277,14 @@ def index_documents(
     langchain_documents = to_langchain_documents(documents)
 
     if langchain_documents:
+        # Delete existing chunks first so reindexing never accumulates stale
+        # documents from a previous run.
         existing = vector_store.get(include=[])
         existing_ids = existing.get("ids", [])
         if existing_ids:
             vector_store.delete(ids=existing_ids)
 
+        # Stable ids derived from the source type and chunk index.
         ids = [
             f"{document.metadata['source_type']}:{index}"
             for index, document in enumerate(documents)

@@ -101,21 +101,25 @@ def extract_search_filters(text: str, catalog: list[Product]) -> SearchFilters:
         A :class:`SearchFilters` instance with the extracted values.
     """
     tokens = tokenize(text)
+    # Only colors that actually exist in the catalog count as color filters.
     catalog_colors = {
         variant.color.lower()
         for product in catalog
         for variant in product.variants
     }
 
+    # Match the query against each category and its synonyms.
     category = None
     for candidate, synonyms in CATEGORY_SYNONYMS.items():
         if candidate in tokens or any(term in tokens for term in synonyms):
             category = candidate
             break
 
+    # Pick the first known color and the first known size mentioned.
     color = next((token for token in tokens if token in catalog_colors), None)
     size = next((SIZE_NORMALIZATION[token] for token in tokens if token in SIZE_NORMALIZATION), None)
 
+    # Extract a "under/up to $X" price ceiling when the query phrases it that way.
     price_ceiling = None
     price_match = PRICE_PATTERN.search(text)
     if price_match:
@@ -123,6 +127,8 @@ def extract_search_filters(text: str, catalog: list[Product]) -> SearchFilters:
         if price_value:
             price_ceiling = float(price_value)
 
+    # Remaining meaningful tokens for lexical scoring: drop stopwords, digits,
+    # colors, sizes, and very short tokens.
     query_terms = tuple(
         token
         for token in tokens
@@ -168,11 +174,15 @@ def search_catalog(
     scored_products: list[tuple[int, Product]] = []
 
     for product in catalog:
+        # Hard filters first: category and price ceiling reject products
+        # deterministically before any scoring happens.
         if filters.category and product.category != filters.category:
             continue
         if filters.price_ceiling is not None and product.price > filters.price_ceiling:
             continue
 
+        # When a size/color is requested, only keep products with a matching
+        # in-stock variant; otherwise every product survives this step.
         matching_variants = [
             variant
             for variant in product.variants
@@ -183,6 +193,8 @@ def search_catalog(
         if (filters.color or filters.size) and not matching_variants:
             continue
 
+        # Lexical overlap score, with bonus weight for each matched filter so
+        # perfect fits rank above products that merely share a term.
         document_tokens = set(
             tokenize(
                 " ".join(
@@ -205,8 +217,11 @@ def search_catalog(
         if filters.price_ceiling is not None:
             score += 1
 
+        # Keep anything with a positive score, or all products when the query
+        # carried no meaningful terms (e.g. just "shoes").
         if score > 0 or not filters.query_terms:
             scored_products.append((score, product))
 
+    # Highest score first; ties broken by lowest price and then name.
     scored_products.sort(key=lambda item: (-item[0], item[1].price, item[1].name))
     return [product for _, product in scored_products[:limit]], filters

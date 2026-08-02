@@ -11,6 +11,7 @@ from ecomm_agent.core.config import settings
 from ecomm_agent.schemas.catalog import Product
 from ecomm_agent.services.catalog import load_catalog
 
+# Read-only catalog endpoints consumed by the website layer.
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 

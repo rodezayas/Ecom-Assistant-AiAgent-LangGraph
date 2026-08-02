@@ -15,7 +15,9 @@ from ecomm_agent.services.guardrails import (
 )
 
 
+# Source-of-truth catalog loaded once at import time.
 CATALOG = load_catalog(settings.catalog_path)
+# Knowledge-base documents loaded once at import time.
 KNOWLEDGE_DOCUMENTS = build_knowledge_base_rag_documents(settings.knowledge_base_dir)
 # Vocabulary of every word the store legitimately talks about, built once from
 # the source-of-truth catalog and knowledge documents.

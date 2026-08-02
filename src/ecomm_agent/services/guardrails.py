@@ -123,6 +123,8 @@ def detect_out_of_scope_terms(text: str, allowed_vocabulary: set[str]) -> tuple[
         an empty tuple.
     """
     tokens = tokenize(text)
+    # Only meaningful tokens count toward scope: drop stopwords, digits, and
+    # very short tokens that carry no domain signal.
     meaningful_tokens = [
         token
         for token in tokens
@@ -132,15 +134,21 @@ def detect_out_of_scope_terms(text: str, allowed_vocabulary: set[str]) -> tuple[
         token for token in meaningful_tokens if token not in allowed_vocabulary
     ]
 
+    # In-domain tokens are a signal the message is still on-topic.
     product_signals = [token for token in meaningful_tokens if token in allowed_vocabulary]
     has_budget_signal = any(token.isdigit() for token in tokens)
 
+    # A budget amount ("under 1500") is a strong store intent, so never flag
+    # such messages as out of scope even if some words are unfamiliar.
     if has_budget_signal:
         return ()
 
+    # Allow the message when it has at least as many in-domain signals as
+    # unknown terms; a single unknown word is tolerated.
     if product_signals and len(product_signals) >= len(unknown_terms):
         return ()
 
+    # Two or more unknown terms means the request left the store's domain.
     if len(unknown_terms) >= 2:
         return tuple(sorted(set(unknown_terms)))
 

@@ -6,6 +6,7 @@ verify the service is up.
 
 from fastapi import APIRouter
 
+# Liveness endpoint used by deployment platforms.
 router = APIRouter(tags=["health"])
 
 

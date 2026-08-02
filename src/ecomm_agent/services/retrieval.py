@@ -74,6 +74,8 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
         the filters are those extracted from the query.
     """
     filters = extract_search_filters(query, CATALOG)
+    # Semantic retrieval first; any failure (e.g. missing vector store)
+    # degrades to an empty result and triggers the lexical fallback below.
     try:
         documents = _query_vector_store(query, source_type="product", limit=limit * 4)
     except Exception:
@@ -82,10 +84,13 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
     if documents:
         products: list[Product] = []
         for document in documents:
+            # Resolve retrieved ids against the catalog source of truth and
+            # drop anything the vector store could not map to a real product.
             product_id = document.metadata.get("product_id")
             product = PRODUCT_LOOKUP.get(product_id)
             if not product:
                 continue
+            # Re-apply deterministic filters on top of the semantic matches.
             if filters.category and product.category != filters.category:
                 continue
             if filters.price_ceiling is not None and product.price > filters.price_ceiling:
@@ -94,6 +99,7 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
                 products.append(product)
 
         if products:
+            # Re-rank the semantic candidates lexically to match the query order.
             lexical_products, _ = search_catalog(query, products, limit=limit)
             if lexical_products:
                 return (
@@ -104,6 +110,7 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
                     filters.price_ceiling,
                 )
 
+    # Full lexical search over the whole catalog as the fallback path.
     lexical_products, _ = search_catalog(query, CATALOG, limit=limit)
     return (
         lexical_products,
