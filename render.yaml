@@ -32,3 +32,15 @@ services:
         value: ./data/catalog/products.json
       - key: KNOWLEDGE_BASE_DIR
         value: ./data/knowledge
+      - key: PHOENIX_ENABLED
+        value: "true"
+      - key: PHOENIX_COLLECTOR_ENDPOINT
+        value: https://app.phoenix.arize.com/v1/traces
+      - key: PHOENIX_PROJECT_NAME
+        value: langgraph-ecom-assistant
+      - key: PHOENIX_API_KEY
+        sync: false
+      - key: OTEL_SERVICE_NAME
+        value: ecomm-agent-api
+      - key: PHOENIX_RECORD_CONTENT
+        value: "true"

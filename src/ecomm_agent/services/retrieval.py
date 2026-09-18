@@ -13,10 +13,13 @@ from langchain_core.documents import Document
 
 from ecomm_agent.agents.state import KnowledgeSnippet
 from ecomm_agent.core.config import settings
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
 from ecomm_agent.rag.vectorstore import build_knowledge_base_rag_documents, load_vector_store
 from ecomm_agent.schemas.catalog import Product
 from ecomm_agent.services.catalog import extract_search_filters, load_catalog, search_catalog
 from ecomm_agent.services.guardrails import tokenize
+
+tracer = get_tracer(__name__)
 
 
 CATALOG = load_catalog(settings.catalog_path)
@@ -73,52 +76,73 @@ def retrieve_products(query: str, *, limit: int = 3) -> tuple[list[Product], str
         A tuple of ``(products, category, color, size, price_ceiling)`` where
         the filters are those extracted from the query.
     """
-    filters = extract_search_filters(query, CATALOG)
-    # Semantic retrieval first; any failure (e.g. missing vector store)
-    # degrades to an empty result and triggers the lexical fallback below.
-    try:
-        documents = _query_vector_store(query, source_type="product", limit=limit * 4)
-    except Exception:
-        documents = []
+    with tracer.start_as_current_span("retrieval.products") as span:
+        filters = extract_search_filters(query, CATALOG)
+        source = "lexical"
+        try:
+            span.set_attribute("retrieval.query_length", len(query))
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", query[:2000])
+        except Exception:
+            pass
+        # Semantic retrieval first; any failure (e.g. missing vector store)
+        # degrades to an empty result and triggers the lexical fallback below.
+        try:
+            documents = _query_vector_store(query, source_type="product", limit=limit * 4)
+        except Exception:
+            documents = []
 
-    if documents:
-        products: list[Product] = []
-        for document in documents:
-            # Resolve retrieved ids against the catalog source of truth and
-            # drop anything the vector store could not map to a real product.
-            product_id = document.metadata.get("product_id")
-            product = PRODUCT_LOOKUP.get(product_id)
-            if not product:
-                continue
-            # Re-apply deterministic filters on top of the semantic matches.
-            if filters.category and product.category != filters.category:
-                continue
-            if filters.price_ceiling is not None and product.price > filters.price_ceiling:
-                continue
-            if product not in products:
-                products.append(product)
+        if documents:
+            products: list[Product] = []
+            for document in documents:
+                # Resolve retrieved ids against the catalog source of truth and
+                # drop anything the vector store could not map to a real product.
+                product_id = document.metadata.get("product_id")
+                product = PRODUCT_LOOKUP.get(product_id)
+                if not product:
+                    continue
+                # Re-apply deterministic filters on top of the semantic matches.
+                if filters.category and product.category != filters.category:
+                    continue
+                if filters.price_ceiling is not None and product.price > filters.price_ceiling:
+                    continue
+                if product not in products:
+                    products.append(product)
 
-        if products:
-            # Re-rank the semantic candidates lexically to match the query order.
-            lexical_products, _ = search_catalog(query, products, limit=limit)
-            if lexical_products:
-                return (
-                    lexical_products,
-                    filters.category,
-                    filters.color,
-                    filters.size,
-                    filters.price_ceiling,
-                )
+            if products:
+                # Re-rank the semantic candidates lexically to match the query order.
+                lexical_products, _ = search_catalog(query, products, limit=limit)
+                if lexical_products:
+                    try:
+                        span.set_attribute("retrieval.source", "vector+lexical")
+                        span.set_attribute("retrieval.product_count", len(lexical_products))
+                    except Exception:
+                        pass
+                    return (
+                        lexical_products,
+                        filters.category,
+                        filters.color,
+                        filters.size,
+                        filters.price_ceiling,
+                    )
+                source = "vector"
 
-    # Full lexical search over the whole catalog as the fallback path.
-    lexical_products, _ = search_catalog(query, CATALOG, limit=limit)
-    return (
-        lexical_products,
-        filters.category,
-        filters.color,
-        filters.size,
-        filters.price_ceiling,
-    )
+        # Full lexical search over the whole catalog as the fallback path.
+        lexical_products, _ = search_catalog(query, CATALOG, limit=limit)
+        try:
+            span.set_attribute("retrieval.source", source)
+            span.set_attribute("retrieval.product_count", len(lexical_products))
+            if is_content_recording_enabled():
+                span.set_attribute("output.value", ", ".join(p.id for p in lexical_products[:5]) or "no_results")
+        except Exception:
+            pass
+        return (
+            lexical_products,
+            filters.category,
+            filters.color,
+            filters.size,
+            filters.price_ceiling,
+        )
 
 
 def retrieve_knowledge(query: str, *, limit: int = 3) -> list[KnowledgeSnippet]:
@@ -135,50 +159,74 @@ def retrieve_knowledge(query: str, *, limit: int = 3) -> list[KnowledgeSnippet]:
     Returns:
         A list of :class:`KnowledgeSnippet` objects, ordered by relevance.
     """
-    source_types = ("policy", "faq", "size_guide")
-    snippets: list[KnowledgeSnippet] = []
-
-    for source_type in source_types:
+    with tracer.start_as_current_span("retrieval.knowledge") as span:
         try:
-            documents = _query_vector_store(query, source_type=source_type, limit=1)
+            span.set_attribute("retrieval.query_length", len(query))
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", query[:2000])
         except Exception:
-            documents = []
+            pass
+        source_types = ("policy", "faq", "size_guide")
+        snippets: list[KnowledgeSnippet] = []
 
-        for document in documents:
-            snippets.append(
-                KnowledgeSnippet(
-                    source_type=document.metadata.get("source_type", source_type),
-                    category=document.metadata.get("category", ""),
-                    section=document.metadata.get("section"),
-                    content=document.page_content,
+        for source_type in source_types:
+            try:
+                documents = _query_vector_store(query, source_type=source_type, limit=1)
+            except Exception:
+                documents = []
+
+            for document in documents:
+                snippets.append(
+                    KnowledgeSnippet(
+                        source_type=document.metadata.get("source_type", source_type),
+                        category=document.metadata.get("category", ""),
+                        section=document.metadata.get("section"),
+                        content=document.page_content,
+                    )
+                )
+
+        if snippets:
+            try:
+                span.set_attribute("retrieval.source", "vector")
+                span.set_attribute("retrieval.knowledge_count", len(snippets[:limit]))
+                if is_content_recording_enabled():
+                    span.set_attribute(
+                        "output.value", "; ".join(s.content[:300] for s in snippets[:limit])
+                    )
+            except Exception:
+                pass
+            return snippets[:limit]
+
+        query_tokens = {
+            token
+            for token in tokenize(query)
+            if len(token) > 2
+        }
+        scored_documents: list[tuple[int, KnowledgeSnippet]] = []
+        for document in KNOWLEDGE_DOCUMENTS:
+            content_tokens = set(tokenize(document.content))
+            score = sum(1 for token in query_tokens if token in content_tokens)
+            if score <= 0:
+                continue
+            scored_documents.append(
+                (
+                    score,
+                    KnowledgeSnippet(
+                        source_type=document.metadata.get("source_type", ""),
+                        category=document.metadata.get("category", ""),
+                        section=document.metadata.get("section"),
+                        content=document.content,
+                    ),
                 )
             )
 
-    if snippets:
-        return snippets[:limit]
-
-    query_tokens = {
-        token
-        for token in tokenize(query)
-        if len(token) > 2
-    }
-    scored_documents: list[tuple[int, KnowledgeSnippet]] = []
-    for document in KNOWLEDGE_DOCUMENTS:
-        content_tokens = set(tokenize(document.content))
-        score = sum(1 for token in query_tokens if token in content_tokens)
-        if score <= 0:
-            continue
-        scored_documents.append(
-            (
-                score,
-                KnowledgeSnippet(
-                    source_type=document.metadata.get("source_type", ""),
-                    category=document.metadata.get("category", ""),
-                    section=document.metadata.get("section"),
-                    content=document.content,
-                ),
-            )
-        )
-
-    scored_documents.sort(key=lambda item: -item[0])
-    return [snippet for _, snippet in scored_documents[:limit]]
+        scored_documents.sort(key=lambda item: -item[0])
+        result = [snippet for _, snippet in scored_documents[:limit]]
+        try:
+            span.set_attribute("retrieval.source", "lexical")
+            span.set_attribute("retrieval.knowledge_count", len(result))
+            if is_content_recording_enabled():
+                span.set_attribute("output.value", "; ".join(s.content[:300] for s in result) or "no_results")
+        except Exception:
+            pass
+        return result

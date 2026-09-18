@@ -104,6 +104,26 @@ class Settings(BaseSettings):
     cors_allowed_origin_regex: str = Field(default=r"https://.*\.lovable\.app")
     """Regex of extra origins allowed by CORS (e.g. Lovable app subdomains)."""
 
+    phoenix_enabled: bool = Field(default=False)
+    """Whether Arize Phoenix tracing is enabled."""
+
+    phoenix_collector_endpoint: str = Field(
+        default="https://app.phoenix.arize.com/v1/traces"
+    )
+    """OTLP/HTTP endpoint for Phoenix Cloud traces."""
+
+    phoenix_project_name: str = Field(default="langgraph-ecom-assistant")
+    """Phoenix project name where traces are grouped."""
+
+    phoenix_api_key: str | None = Field(default=None)
+    """Arize Phoenix Cloud API key (sent as api_key header)."""
+
+    otel_service_name: str = Field(default="ecomm-agent-api")
+    """OpenTelemetry service name reported to Phoenix."""
+
+    phoenix_record_content: bool = Field(default=True)
+    """Whether to record input.value/output.value (user messages) in traces."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

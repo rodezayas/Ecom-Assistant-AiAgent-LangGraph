@@ -7,7 +7,10 @@ question using deterministic vocabulary matching against
 
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.core.domain import COMMERCE_TERMS
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
 from ecomm_agent.services.guardrails import tokenize
+
+tracer = get_tracer(__name__)
 
 
 def intent_router_node(state: AgentState) -> AgentState:
@@ -24,7 +27,17 @@ def intent_router_node(state: AgentState) -> AgentState:
         A copy of the state with ``intent`` set to ``product_search`` or
         ``general_question``.
     """
-    tokens = set(tokenize(state.user_message))
-    if tokens & COMMERCE_TERMS:
-        return state.model_copy(update={"intent": "product_search"})
-    return state.model_copy(update={"intent": "general_question"})
+    with tracer.start_as_current_span("intent_router") as span:
+        tokens = set(tokenize(state.user_message))
+        intent = "product_search" if (tokens & COMMERCE_TERMS) else "general_question"
+        result = state.model_copy(update={"intent": intent})
+        try:
+            span.set_attribute("thread_id", state.thread_id)
+            span.set_attribute("intent", intent)
+            span.set_attribute("token_count", len(tokens))
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", state.user_message[:2000])
+                span.set_attribute("output.value", intent)
+        except Exception:
+            pass
+        return result

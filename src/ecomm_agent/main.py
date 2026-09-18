@@ -33,6 +33,14 @@ async def lifespan(_: FastAPI):
     """
     configure_logging()
 
+    # Phoenix Cloud tracing (OTLP/HTTP) — no-op when PHOENIX_ENABLED=false.
+    try:
+        from ecomm_agent.observability.tracing import setup_tracing
+
+        setup_tracing()
+    except Exception as exc:
+        logger.warning("phoenix tracing setup failed", extra={"error": str(exc)})
+
     if settings.telegram_bot_token and settings.telegram_webhook_public_url:
         webhook_url = (
             f"{settings.telegram_webhook_public_url.rstrip('/')}/webhook/telegram"

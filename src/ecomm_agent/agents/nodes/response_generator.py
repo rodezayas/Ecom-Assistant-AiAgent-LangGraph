@@ -7,8 +7,11 @@ This node never invents data -- it renders what retrieval produced.
 """
 
 from ecomm_agent.agents.state import AgentState
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
 from ecomm_agent.services.inventory import filter_available_variants
 from ecomm_agent.services.urls import build_product_page_url
+
+tracer = get_tracer(__name__)
 
 
 def response_generator_node(state: AgentState) -> AgentState:
@@ -28,6 +31,21 @@ def response_generator_node(state: AgentState) -> AgentState:
     Returns:
         A copy of the state with ``response_text`` set.
     """
+    with tracer.start_as_current_span("response_generator") as span:
+        result = _build_response(state)
+        try:
+            span.set_attribute("thread_id", state.thread_id)
+            span.set_attribute("intent", state.intent or "")
+            span.set_attribute("response.length", len(result.response_text or ""))
+            if is_content_recording_enabled() and result.response_text:
+                span.set_attribute("input.value", state.user_message[:2000])
+                span.set_attribute("output.value", result.response_text[:4000])
+        except Exception:
+            pass
+        return result
+
+
+def _build_response(state: AgentState) -> AgentState:
     if state.guardrail_blocked:
         if state.guardrail_reason == "prompt_injection":
             message = (

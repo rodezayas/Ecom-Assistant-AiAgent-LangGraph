@@ -404,6 +404,10 @@ The website layer should consume the same source-of-truth catalog used by the ag
 - The FastAPI app allows Lovable browser origins for catalog fetches
 - This is required so the frontend can call the API directly from the browser
 
+## Observability
+
+Arize Phoenix Cloud via OTLP/HTTP with LangChainInstrumentor auto-tracing + manual business spans (intent, retrieval, guardrails, LLM) including message content. See [docs/observability.md](docs/observability.md).
+
 ## Maintenance
 
 See [MAINTENANCE.md](/home/rodezayas/LangGraph-Ecom-Assistant/MAINTENANCE.md) for operational notes, reindexing guidance, and deployment considerations.

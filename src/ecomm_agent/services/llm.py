@@ -21,8 +21,11 @@ import httpx
 
 from ecomm_agent.agents.state import AgentState
 from ecomm_agent.core.config import settings
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
 from ecomm_agent.services.inventory import filter_available_variants
 from ecomm_agent.services.urls import build_product_page_url
+
+tracer = get_tracer(__name__)
 
 
 def _build_product_context(state: AgentState) -> str:
@@ -160,40 +163,62 @@ async def _generate_response_text_anthropic(state: AgentState) -> str | None:
     if not settings.anthropic_api_key:
         return None
 
-    payload = {
-        "model": settings.anthropic_model,
-        "max_tokens": settings.anthropic_max_tokens,
-        "system": _build_system_prompt(),
-        "messages": [
-            {
-                "role": "user",
-                "content": _build_user_prompt(state),
-            }
-        ],
-    }
-    headers = {
-        "x-api-key": settings.anthropic_api_key,
-        "anthropic-version": settings.anthropic_api_version,
-        "content-type": "application/json",
-    }
+    with tracer.start_as_current_span("llm.anthropic") as span:
+        try:
+            span.set_attribute("llm.provider", "anthropic")
+            span.set_attribute("llm.model_name", settings.anthropic_model)
+            span.set_attribute("llm.max_tokens", settings.anthropic_max_tokens)
+            span.set_attribute("thread_id", state.thread_id)
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", _build_user_prompt(state)[:4000])
+        except Exception:
+            pass
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
-            f"{settings.anthropic_api_base_url.rstrip('/')}/v1/messages",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
+        payload = {
+            "model": settings.anthropic_model,
+            "max_tokens": settings.anthropic_max_tokens,
+            "system": _build_system_prompt(),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _build_user_prompt(state),
+                }
+            ],
+        }
+        headers = {
+            "x-api-key": settings.anthropic_api_key,
+            "anthropic-version": settings.anthropic_api_version,
+            "content-type": "application/json",
+        }
 
-    body = response.json()
-    content_blocks = body.get("content", [])
-    text_parts = [
-        block.get("text", "")
-        for block in content_blocks
-        if block.get("type") == "text" and block.get("text")
-    ]
-    text = "\n".join(text_parts).strip()
-    return text or None
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{settings.anthropic_api_base_url.rstrip('/')}/v1/messages",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+
+        body = response.json()
+        content_blocks = body.get("content", [])
+        text_parts = [
+            block.get("text", "")
+            for block in content_blocks
+            if block.get("type") == "text" and block.get("text")
+        ]
+        text = "\n".join(text_parts).strip()
+        result = text or None
+        try:
+            if is_content_recording_enabled() and result:
+                span.set_attribute("output.value", result[:4000])
+            usage = body.get("usage", {})
+            if usage:
+                span.set_attribute("llm.token_count.prompt", usage.get("input_tokens", 0))
+                span.set_attribute("llm.token_count.completion", usage.get("output_tokens", 0))
+            span.set_attribute("llm.response_length", len(result or ""))
+        except Exception:
+            pass
+        return result
 
 
 async def _generate_response_text_groq(state: AgentState) -> str | None:
@@ -212,42 +237,63 @@ async def _generate_response_text_groq(state: AgentState) -> str | None:
     if not settings.groq_api_key:
         return None
 
-    payload = {
-        "model": settings.groq_model,
-        "max_completion_tokens": settings.groq_max_completion_tokens,
-        "temperature": 0.2,
-        "messages": [
-            {
-                "role": "system",
-                "content": _build_system_prompt(),
-            },
-            {
-                "role": "user",
-                "content": _build_user_prompt(state),
-            },
-        ],
-    }
-    headers = {
-        "authorization": f"Bearer {settings.groq_api_key}",
-        "content-type": "application/json",
-    }
+    with tracer.start_as_current_span("llm.groq") as span:
+        try:
+            span.set_attribute("llm.provider", "groq")
+            span.set_attribute("llm.model_name", settings.groq_model)
+            span.set_attribute("thread_id", state.thread_id)
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", _build_user_prompt(state)[:4000])
+        except Exception:
+            pass
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.post(
-            f"{settings.groq_api_base_url.rstrip('/')}/chat/completions",
-            headers=headers,
-            json=payload,
-        )
-        response.raise_for_status()
+        payload = {
+            "model": settings.groq_model,
+            "max_completion_tokens": settings.groq_max_completion_tokens,
+            "temperature": 0.2,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": _build_system_prompt(),
+                },
+                {
+                    "role": "user",
+                    "content": _build_user_prompt(state),
+                },
+            ],
+        }
+        headers = {
+            "authorization": f"Bearer {settings.groq_api_key}",
+            "content-type": "application/json",
+        }
 
-    body = response.json()
-    choices = body.get("choices", [])
-    if not choices:
-        return None
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                f"{settings.groq_api_base_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
 
-    message = choices[0].get("message", {})
-    text = message.get("content", "")
-    return text.strip() or None
+        body = response.json()
+        choices = body.get("choices", [])
+        if not choices:
+            return None
+
+        message = choices[0].get("message", {})
+        text = message.get("content", "")
+        result = text.strip() or None
+        try:
+            if is_content_recording_enabled() and result:
+                span.set_attribute("output.value", result[:4000])
+            usage = body.get("usage", {})
+            if usage:
+                span.set_attribute("llm.token_count.prompt", usage.get("prompt_tokens", 0))
+                span.set_attribute("llm.token_count.completion", usage.get("completion_tokens", 0))
+            span.set_attribute("llm.response_length", len(result or ""))
+        except Exception:
+            pass
+        return result
 
 
 async def generate_response_text(state: AgentState) -> str | None:
@@ -262,20 +308,50 @@ async def generate_response_text(state: AgentState) -> str | None:
     Returns:
         The generated text, or ``None`` when every provider is unavailable.
     """
-    try:
-        anthropic_response = await _generate_response_text_anthropic(state)
-    except Exception:
-        anthropic_response = None
+    with tracer.start_as_current_span("llm.generate") as span:
+        try:
+            span.set_attribute("thread_id", state.thread_id)
+            span.set_attribute("llm.provider_order", "anthropic,groq")
+        except Exception:
+            pass
+        try:
+            anthropic_response = await _generate_response_text_anthropic(state)
+        except Exception as exc:
+            try:
+                span.record_exception(exc)
+            except Exception:
+                pass
+            anthropic_response = None
 
-    if anthropic_response:
-        return anthropic_response
+        if anthropic_response:
+            try:
+                span.set_attribute("llm.chosen_provider", "anthropic")
+                if is_content_recording_enabled():
+                    span.set_attribute("output.value", anthropic_response[:4000])
+            except Exception:
+                pass
+            return anthropic_response
 
-    try:
-        groq_response = await _generate_response_text_groq(state)
-    except Exception:
-        groq_response = None
+        try:
+            groq_response = await _generate_response_text_groq(state)
+        except Exception as exc:
+            try:
+                span.record_exception(exc)
+            except Exception:
+                pass
+            groq_response = None
 
-    if groq_response:
-        return groq_response
+        if groq_response:
+            try:
+                span.set_attribute("llm.chosen_provider", "groq")
+                if is_content_recording_enabled():
+                    span.set_attribute("output.value", groq_response[:4000])
+            except Exception:
+                pass
+            return groq_response
 
-    return None
+        try:
+            span.set_attribute("llm.chosen_provider", "none")
+        except Exception:
+            pass
+        return None

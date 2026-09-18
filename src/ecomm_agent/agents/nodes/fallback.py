@@ -7,6 +7,9 @@ prices, or stock.
 """
 
 from ecomm_agent.agents.state import AgentState
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
+
+tracer = get_tracer(__name__)
 
 
 def fallback_node(state: AgentState) -> AgentState:
@@ -20,26 +23,37 @@ def fallback_node(state: AgentState) -> AgentState:
         A copy of the state with ``response_text`` set to the appropriate
         fallback message.
     """
-    if state.guardrail_blocked:
-        if state.guardrail_reason == "prompt_injection":
+    with tracer.start_as_current_span("fallback") as span:
+        if state.guardrail_blocked:
+            if state.guardrail_reason == "prompt_injection":
+                message = (
+                    "I cannot follow instructions that try to override my rules. "
+                    "I can only use verified Alta Norma Fashion catalog data."
+                )
+            else:
+                message = (
+                    "I can only help with Alta Norma Fashion catalog questions. "
+                    "Ask about products, prices, sizes, colors, or stock."
+                )
+        elif state.intent != "product_search":
             message = (
-                "I cannot follow instructions that try to override my rules. "
-                "I can only use verified Alta Norma Fashion catalog data."
+                "I currently support Alta Norma Fashion products, shipping, returns, payments, "
+                "and size guidance. Try asking about those topics directly."
             )
         else:
             message = (
-                "I can only help with Alta Norma Fashion catalog questions. "
-                "Ask about products, prices, sizes, colors, or stock."
+                "I could not find a verified catalog match for that request. "
+                "Try a broader query with category, color, size, or budget."
             )
-    elif state.intent != "product_search":
-        message = (
-            "I currently support Alta Norma Fashion products, shipping, returns, payments, "
-            "and size guidance. Try asking about those topics directly."
-        )
-    else:
-        message = (
-            "I could not find a verified catalog match for that request. "
-            "Try a broader query with category, color, size, or budget."
-        )
 
-    return state.model_copy(update={"response_text": message})
+        result = state.model_copy(update={"response_text": message})
+        try:
+            span.set_attribute("thread_id", state.thread_id)
+            span.set_attribute("intent", state.intent or "")
+            span.set_attribute("fallback.reason", state.guardrail_reason or state.retrieval_reason or "no_results")
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", state.user_message[:2000])
+                span.set_attribute("output.value", message[:4000])
+        except Exception:
+            pass
+        return result

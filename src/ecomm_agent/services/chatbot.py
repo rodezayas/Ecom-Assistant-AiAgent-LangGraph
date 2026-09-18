@@ -8,8 +8,10 @@ graph.
 
 from ecomm_agent.agents.graph import build_graph
 from ecomm_agent.agents.state import AgentState
+from ecomm_agent.observability.tracing import get_tracer, is_content_recording_enabled
 from ecomm_agent.services.llm import generate_response_text
 
+tracer = get_tracer(__name__)
 
 GRAPH = build_graph()
 """Compiled LangGraph instance, built once at import time."""
@@ -25,11 +27,26 @@ def process_user_message(thread_id: str, text: str) -> AgentState:
     Returns:
         The final agent state after the graph completes.
     """
-    state = AgentState(thread_id=thread_id, user_message=text)
-    result = GRAPH.invoke(state)
-    if isinstance(result, AgentState):
-        return result
-    return AgentState.model_validate(result)
+    with tracer.start_as_current_span("agent.graph") as span:
+        try:
+            span.set_attribute("thread_id", thread_id)
+            if is_content_recording_enabled():
+                span.set_attribute("input.value", text[:2000])
+        except Exception:
+            pass
+        state = AgentState(thread_id=thread_id, user_message=text)
+        result = GRAPH.invoke(state)
+        final = result if isinstance(result, AgentState) else AgentState.model_validate(result)
+        try:
+            span.set_attribute("intent", final.intent or "")
+            span.set_attribute("guardrail.blocked", final.guardrail_blocked)
+            span.set_attribute("retrieval.product_count", len(final.retrieved_products))
+            span.set_attribute("retrieval.knowledge_count", len(final.retrieved_knowledge))
+            if is_content_recording_enabled() and final.response_text:
+                span.set_attribute("output.value", final.response_text[:4000])
+        except Exception:
+            pass
+        return final
 
 
 async def build_reply_text(state: AgentState) -> str:
@@ -44,10 +61,29 @@ async def build_reply_text(state: AgentState) -> str:
     Returns:
         The final reply text to send to the user.
     """
-    llm_response = await generate_response_text(state)
-    if llm_response:
-        return llm_response
+    with tracer.start_as_current_span("agent.build_reply") as span:
+        try:
+            span.set_attribute("thread_id", state.thread_id)
+            span.set_attribute("intent", state.intent or "")
+        except Exception:
+            pass
+        llm_response = await generate_response_text(state)
+        if llm_response:
+            try:
+                span.set_attribute("reply.source", "llm")
+                if is_content_recording_enabled():
+                    span.set_attribute("output.value", llm_response[:4000])
+            except Exception:
+                pass
+            return llm_response
 
-    return state.response_text or (
-        "I can help with verified Alta Norma Fashion products, prices, colors, sizes, and stock."
-    )
+        fallback = state.response_text or (
+            "I can help with verified Alta Norma Fashion products, prices, colors, sizes, and stock."
+        )
+        try:
+            span.set_attribute("reply.source", "deterministic")
+            if is_content_recording_enabled():
+                span.set_attribute("output.value", fallback[:4000])
+        except Exception:
+            pass
+        return fallback
