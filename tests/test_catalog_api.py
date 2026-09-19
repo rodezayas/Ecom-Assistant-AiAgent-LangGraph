@@ -27,9 +27,7 @@ async def test_catalog_product_returns_404_for_missing_id(async_client) -> None:
     response = await async_client.get("/api/catalog/DOES-NOT-EXIST")
 
     assert response.status_code == 404
-    assert response.json() == {
-        "detail": "Product 'DOES-NOT-EXIST' was not found in the catalog."
-    }
+    assert response.json() == {"detail": "Product not found."}
 
 
 @pytest.mark.anyio

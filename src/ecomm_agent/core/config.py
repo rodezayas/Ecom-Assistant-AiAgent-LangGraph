@@ -76,6 +76,21 @@ class Settings(BaseSettings):
     bot to receive messages.
     """
 
+    telegram_webhook_secret_token: str | None = Field(default=None)
+    """Secret token used to authenticate Telegram webhook calls.
+
+    When set, the app sends it as ``secret_token`` to ``setWebhook`` and
+    verifies incoming requests via the ``X-Telegram-Bot-Api-Secret-Token``
+    header. Generate with ``openssl rand -hex 32``.
+    """
+
+    admin_api_key: str | None = Field(default=None)
+    """Admin API key required for golden dataset write/evaluate endpoints.
+
+    When set, callers must send ``Authorization: Bearer <key>``. In
+    development the endpoints are more permissive only if this is unset.
+    """
+
     frontend_base_url: str | None = Field(default=None)
     """Public base URL of the web frontend.
 
@@ -96,13 +111,27 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:3000",
             "http://localhost:5173",
-            "https://lovable.dev",
         ]
     )
     """Explicit origins allowed to call the catalog API from the browser."""
 
     cors_allowed_origin_regex: str = Field(default=r"https://.*\.lovable\.app")
     """Regex of extra origins allowed by CORS (e.g. Lovable app subdomains)."""
+
+    cors_allow_credentials: bool = Field(default=False)
+    """Whether to send credentials (cookies/auth) cross-origin; false for read-only catalog."""
+
+    rate_limit_webhook_per_minute: int = Field(default=60, ge=10, le=600)
+    """Rate limit for webhook endpoint (requests per minute per IP)."""
+
+    rate_limit_catalog_per_minute: int = Field(default=100, ge=10, le=1000)
+    """Rate limit for catalog endpoints."""
+
+    rate_limit_golden_per_minute: int = Field(default=60, ge=10, le=600)
+    """Rate limit for golden read endpoints."""
+
+    max_telegram_text_length: int = Field(default=4000, ge=500, le=10000)
+    """Maximum length for Telegram message text; longer messages are truncated/rejected."""
 
     phoenix_enabled: bool = Field(default=False)
     """Whether Arize Phoenix tracing is enabled."""
@@ -121,8 +150,12 @@ class Settings(BaseSettings):
     otel_service_name: str = Field(default="ecomm-agent-api")
     """OpenTelemetry service name reported to Phoenix."""
 
-    phoenix_record_content: bool = Field(default=True)
-    """Whether to record input.value/output.value (user messages) in traces."""
+    phoenix_record_content: bool = Field(default=False)
+    """Whether to record input.value/output.value (user messages) in traces.
+
+    Defaults to false to avoid exporting PII to Phoenix Cloud. Enable only
+    for explicit evaluation or debugging sessions.
+    """
 
     # Supabase — golden dataset source of truth
     supabase_url: str | None = Field(default=None)

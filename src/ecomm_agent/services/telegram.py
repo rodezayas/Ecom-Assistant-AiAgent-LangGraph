@@ -75,11 +75,13 @@ async def set_webhook(webhook_url: str) -> dict:
     if not settings.telegram_bot_token:
         raise RuntimeError("telegram_bot_token is not configured")
 
-    payload = {
+    payload: dict[str, object] = {
         "url": webhook_url,
         "allowed_updates": ["message"],
         "drop_pending_updates": False,
     }
+    if settings.telegram_webhook_secret_token:
+        payload["secret_token"] = settings.telegram_webhook_secret_token
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(

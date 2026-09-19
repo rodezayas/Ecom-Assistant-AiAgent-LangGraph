@@ -138,9 +138,10 @@ def detect_out_of_scope_terms(text: str, allowed_vocabulary: set[str]) -> tuple[
     product_signals = [token for token in meaningful_tokens if token in allowed_vocabulary]
     has_budget_signal = any(token.isdigit() for token in tokens)
 
-    # A budget amount ("under 1500") is a strong store intent, so never flag
-    # such messages as out of scope even if some words are unfamiliar.
-    if has_budget_signal:
+    # A budget amount ("under 1500") is a strong store intent, but only when
+    # combined with at least one in-domain product signal — otherwise it would
+    # let "cryptocurrency under 1500" bypass scope checks.
+    if has_budget_signal and product_signals:
         return ()
 
     # Allow the message when it has at least as many in-domain signals as

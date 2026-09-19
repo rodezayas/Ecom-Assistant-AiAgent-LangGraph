@@ -1,50 +1,50 @@
 # Observability — Arize Phoenix Cloud (OTLP/HTTP)
 
-## 1. Propósito
+## 1. Purpose
 
-Este documento describe la capa de observabilidad del asistente basada en **Arize Phoenix Cloud** vía **OpenTelemetry OTLP/HTTP**, con auto-instrumentación de LangGraph y spans manuales de negocio que incluyen contenido de mensajes.
+This document describes the observability layer based on **Arize Phoenix Cloud** via **OpenTelemetry OTLP/HTTP**, with LangGraph auto-instrumentation and manual business spans that optionally include message content.
 
-Principios:
-- **LangChainInstrumentor** (`openinference-instrumentation-langchain`) traza automáticamente `StateGraph.invoke` y cada nodo como `chain` spans. No se reemplaza el grafo, lo envuelve.
-- **Spans manuales** añaden atributos de negocio (`intent`, `guardrail`, `retrieval`, `llm`) y `input.value`/`output.value` (mensajes, prompts y respuestas).
-- **Phoenix Cloud** es el único backend por defecto. No se requiere collector local ni servicio `phoenix` en `docker-compose`. Local y producción envían directo a `https://app.phoenix.arize.com/v1/traces` vía HTTP.
-- **Fail-safe**: si Phoenix está deshabilitado o la API key falta, la app funciona sin tracing (no rompe el webhook).
+Principles:
+- **LangChainInstrumentor** (`openinference-instrumentation-langchain`) automatically traces `StateGraph.invoke` and each node as `chain` spans. It wraps the graph without replacing it.
+- **Manual spans** add business attributes (`intent`, `guardrail`, `retrieval`, `llm`) and `input.value`/`output.value` (messages, prompts and responses).
+- **Phoenix Cloud** is the default backend. No local collector or `phoenix` service in `docker-compose` is required. Local and production send directly to `https://app.phoenix.arize.com/v1/traces` via HTTP.
+- **Fail-safe**: when Phoenix is disabled or the API key is missing, the app runs without tracing (webhook is not broken).
 
-## 2. Arquitectura de Trazas
+## 2. Trace Architecture
 
 ```
 POST /webhook/telegram  (span: webhook.telegram, thread_id, input.value=user_message)
  └─ agent.graph  (span: process_user_message, thread_id)
      ├─ [auto] langgraph StateGraph  (chain)
-     │   ├─ intent_router  (span manual + auto chain) -> intent
-     │   ├─ retrieval  (span manual) -> retrieval.products / retrieval.knowledge
-     │   │   └─ retrieval.products / retrieval.knowledge  (service layer spans: source=vector|lexical)
-     │   ├─ guardrails  (span manual) -> guardrail.blocked/reason
-     │   ├─ response_generator | fallback  (span manual) -> output.value=response_text
+     │   ├─ intent_router  (manual + auto chain) -> intent
+     │   ├─ retrieval  (manual) -> retrieval.products / retrieval.knowledge
+     │   │   └─ retrieval.products / retrieval.knowledge  (service spans: source=vector|lexical)
+     │   ├─ guardrails  (manual) -> guardrail.blocked/reason
+     │   ├─ response_generator | fallback  (manual) -> output.value=response_text
      │   └─ (auto) fallback / response_generator end
      ├─ agent.build_reply
      │   └─ llm.generate
      │       ├─ llm.anthropic  (httpx, input.value=prompt, output.value=text)
-     │       └─ llm.groq  (fallback)
-     └─ telegram.sendMessage  (span manual, telegram.ok)
+     │       └─ llm.groq  (fallback, validated by _validate_llm_output)
+     └─ telegram.sendMessage  (manual, telegram.ok)
 ```
 
-Convenciones: se siguen **OpenInference Semantic Conventions** (`input.value`, `output.value`, `llm.model_name`, `llm.token_count.*`, `retrieval.documents.*`).
+Follows **OpenInference Semantic Conventions** (`input.value`, `output.value`, `llm.model_name`, `llm.token_count.*`, `retrieval.documents.*`).
 
-## 3. Configuración
+## 3. Configuration
 
-Variables en `src/ecomm_agent/core/config.py:14` (`Settings`):
+Variables in `src/ecomm_agent/core/config.py:136` (`Settings`):
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |---|---|---|
-| `PHOENIX_ENABLED` | `false` | Activa tracing. Si `false`, no-op. |
-| `PHOENIX_COLLECTOR_ENDPOINT` | `https://app.phoenix.arize.com/v1/traces` | Endpoint OTLP/HTTP Cloud |
-| `PHOENIX_PROJECT_NAME` | `langgraph-ecom-assistant` | Proyecto Phoenix donde se agrupan trazas |
-| `PHOENIX_API_KEY` | `None` | API key de Arize Phoenix Cloud (header `api_key`) |
-| `OTEL_SERVICE_NAME` | `ecomm-agent-api` | `service.name` OTEL |
-| `PHOENIX_RECORD_CONTENT` | `true` | Si `true`, graba `input.value/output.value` con contenido de mensajes y prompts |
+| `PHOENIX_ENABLED` | `false` | Enable tracing. When `false`, no-op. |
+| `PHOENIX_COLLECTOR_ENDPOINT` | `https://app.phoenix.arize.com/v1/traces` | Cloud OTLP/HTTP endpoint |
+| `PHOENIX_PROJECT_NAME` | `langgraph-ecom-assistant` | Phoenix project name |
+| `PHOENIX_API_KEY` | `None` | Arize Phoenix Cloud API key (header `api_key`) |
+| `OTEL_SERVICE_NAME` | `ecomm-agent-api` | OTEL `service.name` |
+| `PHOENIX_RECORD_CONTENT` | `false` | When `true`, record `input.value/output.value` with message and prompt content — defaults to false to avoid PII export |
 
-Ejemplo `.env` local (apunta a Cloud, no requiere daemon):
+Example `.env` (points to Cloud, no daemon required):
 
 ```env
 PHOENIX_ENABLED=true
@@ -52,20 +52,20 @@ PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces
 PHOENIX_PROJECT_NAME=langgraph-ecom-assistant
 PHOENIX_API_KEY=sk-phoenix-...
 OTEL_SERVICE_NAME=ecomm-agent-api
-PHOENIX_RECORD_CONTENT=true
+PHOENIX_RECORD_CONTENT=false
 ```
 
-Obtener `PHOENIX_API_KEY`: https://app.phoenix.arize.com -> Settings -> API Keys.
+Get `PHOENIX_API_KEY`: https://app.phoenix.arize.com -> Settings -> API Keys.
 
 ## 4. Setup
 
-### Código
+### Code
 
-- `src/ecomm_agent/observability/tracing.py`: `setup_tracing()` usa `phoenix.otel.register(project_name, endpoint, headers={"api_key": ...}, batch=True, auto_instrument=True)` + `LangChainInstrumentor().instrument()`. Gated por `PHOENIX_ENABLED` y con `try/except` para no romper arranque.
-- `src/ecomm_agent/observability/__init__.py`: exporta `setup_tracing`, `get_tracer`, `is_content_recording_enabled`.
-- `src/ecomm_agent/main.py:26` (`lifespan`): llama `setup_tracing()` antes de `set_webhook`. Loguea `phoenix tracing registered` o `warning` si falla.
+- `src/ecomm_agent/observability/tracing.py`: `setup_tracing()` uses `phoenix.otel.register(project_name, endpoint, headers={"api_key": ...}, batch=True, auto_instrument=True)` + `LangChainInstrumentor().instrument()`. Gated by `PHOENIX_ENABLED` and wrapped in `try/except` to avoid breaking startup.
+- `src/ecomm_agent/observability/__init__.py`: exports `setup_tracing`, `get_tracer`, `is_content_recording_enabled`.
+- `src/ecomm_agent/main.py:39` (`lifespan`): calls `setup_tracing()` before `set_webhook`.
 
-### Dependencias
+### Dependencies
 
 `pyproject.toml:7`:
 
@@ -76,13 +76,13 @@ openinference-instrumentation-langchain>=0.1.0
 openinference-semantic-conventions>=0.1.0
 ```
 
-Instalar: `uv sync`.
+Install: `uv sync`.
 
-## 5. Spans y Atributos
+## 5. Spans and Attributes
 
-| Span | Archivo | Atributos clave |
+| Span | File | Key attributes |
 |---|---|---|
-| `webhook.telegram` | `src/ecomm_agent/api/routes/telegram.py:22` | `thread_id`, `http.route`, `intent`, `guardrail.blocked/reason`, `input.value`, `output.value`, `response.length`, `telegram.sent/message_id` |
+| `webhook.telegram` | `src/ecomm_agent/api/routes/telegram.py:24` | `thread_id`, `http.route`, `intent`, `guardrail.blocked/reason`, `input.value` (when `PHOENIX_RECORD_CONTENT=true`), `output.value`, `response.length`, `telegram.sent/message_id` |
 | `agent.graph` | `src/ecomm_agent/services/chatbot.py:18` | `thread_id`, `intent`, `guardrail.blocked`, `retrieval.product/knowledge_count`, `input/output.value` |
 | `agent.build_reply` | `src/ecomm_agent/services/chatbot.py:35` | `thread_id`, `intent`, `reply.source=llm|deterministic`, `output.value` |
 | `intent_router` | `src/ecomm_agent/agents/nodes/intent_router.py:13` | `thread_id`, `intent`, `token_count`, `input/output.value` |
@@ -92,64 +92,64 @@ Instalar: `uv sync`.
 | `guardrails` | `src/ecomm_agent/agents/nodes/guardrails.py:30` | `thread_id`, `guardrail.blocked/reason/blocked_terms`, `intent`, `input/output.value` |
 | `response_generator` | `src/ecomm_agent/agents/nodes/response_generator.py:17` | `thread_id`, `intent`, `response.length`, `input/output.value` |
 | `fallback` | `src/ecomm_agent/agents/nodes/fallback.py:12` | `thread_id`, `intent`, `fallback.reason`, `input/output.value` |
-| `llm.generate` | `src/ecomm_agent/services/llm.py:253` | `thread_id`, `llm.provider_order`, `llm.chosen_provider`, `output.value` |
-| `llm.anthropic` | `src/ecomm_agent/services/llm.py:147` | `llm.provider`, `llm.model_name`, `llm.max_tokens`, `llm.token_count.*`, `llm.response_length`, `input/output.value` |
-| `llm.groq` | `src/ecomm_agent/services/llm.py:199` | idem Groq |
-| `telegram.sendMessage` | `src/ecomm_agent/services/telegram.py:14` | `telegram.chat_id`, `telegram.text_length`, `telegram.ok`, `input.value` |
-| `[auto] langgraph` | via `LangChainInstrumentor` | `chain` spans por nodo (complementan los manuales) |
+| `llm.generate` | `src/ecomm_agent/services/llm.py:299` | `thread_id`, `llm.provider_order`, `llm.chosen_provider`, `llm.validation_failed`, `output.value` |
+| `llm.anthropic` | `src/ecomm_agent/services/llm.py:150` | `llm.provider`, `llm.model_name`, `llm.token_count.*`, `llm.response_length`, `input/output.value` |
+| `llm.groq` | `src/ecomm_agent/services/llm.py:224` | same as Anthropic |
+| `telegram.sendMessage` | `src/ecomm_agent/services/telegram.py:17` | `telegram.chat_id`, `telegram.text_length`, `telegram.ok`, `input.value` |
+| `[auto] langgraph` | via `LangChainInstrumentor` | `chain` spans per node (complement manual spans) |
 
-Todos los spans truncan `input/output.value` a `2000/4000` caracteres para limitar cardinalidad.
+All spans truncate `input/output.value` to `2000/4000` chars.
 
-## 6. Contenido de Mensajes y PII
+## 6. Message Content and PII
 
-- Cuando `PHOENIX_RECORD_CONTENT=true` (default), `input.value` contiene `user_message` o prompt completo (`_build_user_prompt` con contexto verificado) y `output.value` contiene respuesta LLM o determinística.
-- Esto es **intencional** por requerimiento (debug y golden dataset futuro en Supabase). Phoenix Cloud retiene estos datos.
-- Para desactivar en producción sin perder tracing, setear `PHOENIX_RECORD_CONTENT=false` (mantiene métricas/latencias sin contenido).
+- When `PHOENIX_RECORD_CONTENT=true`, `input.value` contains `user_message` or the full prompt (`_build_user_prompt` with verified context) and `output.value` contains the LLM or deterministic answer.
+- This is opt-in. Default is `false` to avoid exporting PII to Phoenix Cloud.
+- Enable explicitly for debugging or evaluation: `PHOENIX_RECORD_CONTENT=true` for eval sessions only. Phoenix Cloud retains this data per its retention policy.
 
 ## 7. Local vs Render
 
-- **Local**: `PHOENIX_ENABLED=true` + `PHOENIX_API_KEY` -> envía directo a Cloud. No se levanta `phoenix` en `docker-compose.yml`.
-- **Render**: `render.yaml` define `PHOENIX_ENABLED`, `PHOENIX_COLLECTOR_ENDPOINT`, `PHOENIX_PROJECT_NAME` fijos y `PHOENIX_API_KEY` como `sync: false` (secreto). Si no se configura la key, el log muestra `warning` y la app sigue sin tracing.
-- No se usa `/tmp/data/vectorstore` para Phoenix; vector store sigue efímero como está documentado en `README`.
+- **Local**: `PHOENIX_ENABLED=true` + `PHOENIX_API_KEY` → sends directly to Cloud. No `phoenix` in `docker-compose.yml`.
+- **Render**: `render.yaml` defines `PHOENIX_ENABLED`, `PHOENIX_COLLECTOR_ENDPOINT`, `PHOENIX_PROJECT_NAME` fixed and `PHOENIX_API_KEY` as `sync: false` (secret). When the key is not configured, startup logs a warning and the app continues without tracing.
 
-## 8. Verificación
+## 8. Verification
 
-### 1. Habilitar y correr
+### 1. Enable and run
 
 ```bash
 uv sync
 PHOENIX_ENABLED=true PHOENIX_API_KEY=... uv run uvicorn ecomm_agent.main:app --reload
 ```
 
-### 2. Disparar webhook de prueba
+### 2. Trigger a test webhook
 
 ```bash
 curl -X POST http://localhost:8000/webhook/telegram \
   -H 'content-type: application/json' \
+  -H 'X-Telegram-Bot-Api-Secret-Token: $TELEGRAM_WEBHOOK_SECRET_TOKEN' \
   -d '{"update_id":1,"message":{"message_id":99,"chat":{"id":12345},"text":"do you have black running shoes under 1500?"}}'
 ```
 
-### 3. Ver en Phoenix Cloud
+### 3. View in Phoenix Cloud
 
-Ir a https://app.phoenix.arize.com -> proyecto `langgraph-ecom-assistant` -> Traces. Debe aparecer `webhook.telegram` con hijos `agent.graph`, `intent_router`, `retrieval`, `guardrails`, `llm.anthropic|groq`, etc., cada uno con `input.value/output.value`.
+Go to https://app.phoenix.arize.com → project `langgraph-ecom-assistant` → Traces. You should see `webhook.telegram` with children `agent.graph`, `intent_router`, `retrieval`, `guardrails`, `llm.anthropic|groq`, etc., each with `input.value/output.value` when recording is enabled.
 
 ### Troubleshooting
 
-- `phoenix tracing disabled` -> `PHOENIX_ENABLED=false`.
-- `phoenix tracing enabled but PHOENIX_API_KEY is missing` -> trazas no autenticadas, Cloud las rechaza.
-- `phoenix register failed` -> ver `endpoint` y `api_key` (formato, región).
-- No aparece auto-traza LangGraph -> verificar `openinference-instrumentation-langchain` instalado y `LangChainInstrumentor().instrument()` log `langchain instrumentor enabled`.
+- `phoenix tracing disabled` → `PHOENIX_ENABLED=false`.
+- `phoenix tracing enabled but PHOENIX_API_KEY is missing` → Cloud rejects unauthenticated traces.
+- `phoenix register failed` → check `endpoint` and `api_key`.
+- No LangGraph auto-trace → verify `openinference-instrumentation-langchain` installed and `LangChainInstrumentor().instrument()` log `langchain instrumentor enabled`.
 
-## 9. Evaluación y Golden Dataset (Futuro)
+## 9. Evaluation and Golden Dataset
 
-Phoenix servirá como backend de evaluación. Próxima fase (Supabase golden dataset):
-- Dataset en Supabase con `query`, `expected_product_ids`, `expected_intent`, `guardrail_expected`.
-- Job que corre `process_user_message` offline y exporta spans + compara `retrieved_products` vs expected (hallucination check).
-- Phoenix Evals: anotaciones y métricas `guardrail_block_rate`, `retrieval_hit_rate`, `llm_fallback_rate`, `p95 latency por nodo`.
+Phoenix serves as evaluation backend. With the Supabase golden dataset:
+- Dataset in Supabase with `query`, `expected_product_ids`, `expected_intent`, `guardrail_expected`.
+- Job runs `process_user_message` offline and exports spans + compares `retrieved_products` vs expected.
+- Phoenix Evals: annotations and metrics `guardrail_block_rate`, `retrieval_hit_rate`, `llm_fallback_rate`, `p95 latency per node`.
 
-## 10. Referencias
+## 10. References
 
-- Setup: `src/ecomm_agent/observability/tracing.py`, `src/ecomm_agent/main.py:26`
-- Config: `src/ecomm_agent/core/config.py:14`
-- Instrumentación: `src/ecomm_agent/api/routes/telegram.py:22`, `src/ecomm_agent/services/chatbot.py:18`, `src/ecomm_agent/services/llm.py:147`, `src/ecomm_agent/services/retrieval.py:63`, `src/ecomm_agent/agents/nodes/*`
+- Setup: `src/ecomm_agent/observability/tracing.py`, `src/ecomm_agent/main.py:39`
+- Config: `src/ecomm_agent/core/config.py:136`
+- Instrumentation: `src/ecomm_agent/api/routes/telegram.py:24`, `src/ecomm_agent/services/chatbot.py:18`, `src/ecomm_agent/services/llm.py:150`, `src/ecomm_agent/services/retrieval.py:63`, `src/ecomm_agent/agents/nodes/*`
 - Infra: `render.yaml`, `pyproject.toml:7`

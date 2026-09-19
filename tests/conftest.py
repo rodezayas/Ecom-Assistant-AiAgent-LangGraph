@@ -1,7 +1,15 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from ecomm_agent.api.routes.telegram import clear_seen_updates
 from ecomm_agent.main import app
+
+
+@pytest.fixture(autouse=True)
+def _clear_telegram_dedup() -> None:
+    clear_seen_updates()
+    yield
+    clear_seen_updates()
 
 
 @pytest.fixture

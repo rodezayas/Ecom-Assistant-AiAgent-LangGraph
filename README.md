@@ -1,285 +1,201 @@
-# Intelligent Ecom Agent
+# Intelligent Ecom Agent — Alta Norma Fashion
 
-> No es otro chatbot que suena fluido: precios, tallas y stock nunca vienen del LLM, vienen del catálogo verificado.
-> Cada turno se traza en Arize Phoenix y se valida contra un golden dataset en Supabase — 8/8 en evaluación.
+Telegram sales assistant that never hallucinates price, size, color, stock, or product URLs — all facts come from the verified catalog and deterministic resolvers.
 
-Telegram sales assistant for Alta Norma Fashion, built to demonstrate production-minded AI engineering with FastAPI, LangGraph, deterministic guardrails, and optional Chroma-backed RAG.
+## Overview
 
-Public Telegram bot: `t.me/AltaNormaFashion_bot`
+- **What:** FastAPI + LangGraph assistant on Telegram with a read-only catalog API for a Lovable-hosted storefront, backed by a JSON catalog, Markdown knowledge base, optional Chroma retrieval, and Supabase + Phoenix evaluation.
+- **Who:** Shoppers via `t.me/AltaNormaFashion_bot`; developers/product teams via `GET /api/catalog` for website product pages.
+- **What it does:** Routes intent → retrieves verified products/knowledge (vector + lexical) → enforces deterministic guardrails → generates a Telegram reply with verified URLs → traces every turn → evaluates against a Supabase golden dataset.
+- **Why:** Demonstrates production-minded AI engineering: the LLM is used only for language, while inventory, pricing, and URLs are queried deterministically.
 
-## What This Project Proves
+## What Problem Does It Solve?
 
-This project is intentionally not just a chatbot demo.
-
-It is designed to show:
-
-- agent orchestration with `LangGraph`
-- separation between LLM-generated language and source-of-truth business data
-- deterministic business guardrails
-- real Telegram webhook integration
-- a read-only web catalog API for product page rendering
-- regression tests that protect critical store behavior
-- observability with Arize Phoenix Cloud (OTLP/HTTP + OpenInference)
-- golden dataset + evaluation as source of truth in Supabase
-
-## Problem Statement
-
-Most retail chatbots fail in the same place: they sound fluent, but they invent prices, sizes, stock, and policies.
-
-This project is built around the opposite approach:
-
-- the LLM is used for language generation
-- catalog and inventory facts come from verified local data
-- policy answers come from verified knowledge sources
-- unsafe or irrelevant requests are blocked before generation
-- every turn is traced and evaluable against a golden dataset
-
-That design is the core business value of the system.
-
-## Architecture
-
-### Main components
-
-- `FastAPI` receives Telegram webhook events
-- `FastAPI` also exposes read-only catalog and golden dataset endpoints
-- `LangGraph` orchestrates the intent, retrieval, guardrails, response, and fallback flow
-- `JSON catalog` acts as the deterministic product source of truth
-- `Markdown knowledge base` stores policies, FAQ, and size guidance
-- `Chroma` can back semantic retrieval through local persistence
-- `Anthropic` is the primary text generation provider
-- `Groq` is the fallback generation provider
-- `OpenAI Embeddings` is used only for vector indexing and similarity search
-- `Arize Phoenix Cloud` receives OTLP/HTTP traces with LangChainInstrumentor + manual business spans (input.value/output.value)
-- `Supabase` stores the golden dataset (`public.golden_queries`) and evaluation history (`evaluation_runs`/`evaluation_results`)
-
-### Flow Diagram
-
-```mermaid
-flowchart TD
-    A[Telegram Message] --> B[Webhook POST /webhook/telegram]
-    B --> C[LangGraph]
-    C --> D[Intent Router]
-    D --> E[Guardrails]
-    E -->|Blocked| F[Safe Reply]
-    E -->|Allowed| G[Retrieval]
-    G --> H[Chroma]
-    G --> I[Lexical Fallback]
-    H --> J[Verified Catalog and KB]
-    I --> J
-    J --> K[Response Generator]
-    K --> L[Anthropic]
-    L -->|Failure| M[Groq]
-    M -->|Failure| N[Deterministic Fallback]
-    L --> O[Telegram Reply]
-    M --> O
-    N --> O
-    B --> P[Phoenix Trace webhook.telegram]
-    C --> Q[Phoenix Traces agent.graph / llm / retrieval]
-    R[Supabase Golden Queries] --> C
-    C --> S[Evaluation Runner]
-    S --> R
-    S --> T[Phoenix Trace evaluation.run]
-```
-
-Observability and evaluation are orthogonal to the chat flow — every node emits spans to Phoenix, and every golden query can be replayed and scored against the same graph.
-
-## Why These Decisions Were Made
-
-### 1. LangGraph instead of a single prompt chain
-
-- Decision: model the assistant as explicit nodes for intent, retrieval, guardrails, response, and fallback
-- Why: the project goal is not just text generation; it is controllable agent behavior with inspectable transitions
-- Business impact: easier debugging, safer extensions, clearer interview story
-
-### 2. Deterministic catalog data instead of asking the LLM for inventory facts
-
-- Decision: price, color, size, and stock come from the catalog and inventory logic, not from generated text
-- Why: these are the highest-risk hallucination fields in e-commerce
-- Business impact: prevents false availability claims and wrong pricing answers
-
-### 3. Guardrails before generation
-
-- Decision: block prompt injection and out-of-scope requests before retrieval and generation
-- Why: a blocked request is safer and cheaper than a generated wrong answer
-- Business impact: protects the assistant from jailbreak-style misuse and keeps the bot on brand
-
-### 4. Chroma as optional local persistence with lexical fallback
-
-- Decision: keep retrieval compatible with local embedded Chroma, but allow the app to continue working when the vector store has not been indexed yet
-- Why: this reduces demo fragility during early phases while preserving the target RAG architecture
-- Business impact: the bot remains usable while retrieval infrastructure is still being finalized
-
-### 5. Anthropic primary with Groq fallback
-
-- Decision: use provider fallback for final response generation
-- Why: production systems need graceful degradation, not total failure on one provider outage
-- Business impact: better uptime and a stronger reliability story
-
-### 6. OpenAI only for embeddings, not for response generation
-
-- Decision: use `OpenAIEmbeddings` only in the retrieval layer
-- Why: the current project uses Anthropic and Groq for response generation, but embeddings are a separate capability and this implementation uses OpenAI exclusively for vectorization
-- Business impact: keeps the response path resilient across two generation providers while using a pragmatic, well-supported embedding layer for RAG
-
-### 7. Read-only catalog API for Lovable and product pages
-
-- Decision: expose `GET /api/catalog` and `GET /api/catalog/{product_id}` from the same FastAPI app
-- Why: the website should consume the exact same catalog source of truth as the agent, without duplicating data or exposing internal agent mechanics
-- Business impact: keeps Telegram replies, product pages, and future storefront UI aligned on the same verified catalog data
-
-### 8. Arize Phoenix Cloud for observability
-
-- Decision: export OTLP/HTTP traces to Phoenix Cloud via `arize-phoenix-otel` + `LangChainInstrumentor`, with manual spans for `intent`, `retrieval`, `guardrails`, `llm` including `input.value`/`output.value`
-- Why: Phoenix is OTLP-native, self-host-free (Cloud), and renders LangGraph traces with OpenInference conventions; `input.value` is required for golden dataset debugging
-- Business impact: per-turn latency, guardrail block rate, retrieval hit rate, and hallucination checks are inspectable in one UI
-
-### 9. Supabase as golden dataset source of truth
-
-- Decision: store `public.golden_queries` in Supabase (MVP, 1 table), with `supabase/migrations/20250918_golden_evaluation.sql` for `evaluation_runs`/`evaluation_results`
-- Why: the catalog is source of truth for products, Supabase is source of truth for expected behavior; SQL editor workflow is familiar and keeps evaluation history linkable to Phoenix via `phoenix_trace_id`
-- Business impact: regression is measurable — `uv run ecomm-agent eval-golden` yields 8/8 or flags `missing_product:intent_mismatch`
-
-For the full historical decision log, see [ADR.md](ADR.md).
+- **Current problem:** Retail chatbots sound fluent but invent prices, availability, shipping promises, and product links.
+- **Existing workflow:** A customer asks in Telegram ("do you have blue t-shirt in M?" or "shipping to Argentina?"); a single-prompt bot hallucinates or gives a generic answer.
+- **Pain point:** No separation between what the model generates and what the system knows; no guardrails; no observability; no regression testing.
+- **Consequence:** False availability claims, wrong pricing, brand distrust, and no way to measure degradation when prompts or models change.
+- **How this system improves it:** Verified catalog is the source of truth; Markdown KB for policies; deterministic guardrails blocked before generation; provider fallback; every turn traced in Phoenix; every golden query evaluated in Supabase. Conditional result: `8/8` on the seeded golden dataset when `index-rag` and Supabase are configured.
 
 ## Business Rules
 
-These are the rules the assistant is built around.
+| Rule | Description | Enforcement |
+|------|-------------|-------------|
+| BR-001 | Prices, sizes, colors, stock, and product variants come from deterministic catalog data, never from the LLM | `src/ecomm_agent/services/catalog.py:36,72,176`, `src/ecomm_agent/services/inventory.py:11`, `src/ecomm_agent/rag/vectorstore.py:48` embeds only name/description/category/tags; `src/ecomm_agent/services/llm.py:131` system prompt; `tests/test_catalog.py` |
+| BR-002 | Catalog is the single source of truth for products; website and agent read the same file | `src/ecomm_agent/services/catalog.py:72` `load_catalog`, `src/ecomm_agent/api/routes/catalog.py:18`, `src/ecomm_agent/core/config.py:89` `CATALOG_PATH` |
+| BR-003 | Policy, FAQ, and size guidance come only from the verified Markdown knowledge base | `src/ecomm_agent/rag/vectorstore.py:171`, `src/ecomm_agent/services/retrieval.py:148` filtered by `source_type`; `src/ecomm_agent/agents/nodes/response_generator.py:81` |
+| BR-004 | Prompt injection attempts are blocked deterministically | `src/ecomm_agent/core/domain.py:117` 30 patterns, `src/ecomm_agent/services/guardrails.py:93` substring check, `src/ecomm_agent/agents/nodes/guardrails.py:33`; `tests/test_guardrails.py:27` |
+| BR-005 | Out-of-scope requests are rejected when ≥2 unknown meaningful terms and unknown ≥ known signals | `src/ecomm_agent/services/guardrails.py:108,147` `build_allowed_vocabulary` vs token counts; budget signal requires an in-domain token `guardrails.py:139` |
+| BR-006 | Intent is deterministic via `COMMERCE_TERMS` → `product_search`, else `general_question` (guardrail can force `out_of_domain`) | `src/ecomm_agent/agents/nodes/intent_router.py:32`, `src/ecomm_agent/core/domain.py:15` |
+| BR-007 | Retrieval is filtered deterministically by category synonym, color, size normalization, and price ceiling | `src/ecomm_agent/services/catalog.py:46,176` `CATEGORY_SYNONYMS`, `SIZE_NORMALIZATION`, `PRICE_PATTERN`; `src/ecomm_agent/services/retrieval.py:63` |
+| BR-008 | Product page URL is deterministic `{FRONTEND_BASE_URL}/products/{id}` or `None` when not configured; never from LLM | `src/ecomm_agent/services/urls.py:11` `build_product_page_url`; validated in `src/ecomm_agent/services/llm.py:299` `_validate_llm_output` |
+| BR-009 | Provider failover is Anthropic → Groq → deterministic fallback | `src/ecomm_agent/services/llm.py:299` `generate_response_text`, `src/ecomm_agent/services/chatbot.py:80` `build_reply_text`; `tests/test_llm_fallback.py` |
+| BR-010 | Public web access is limited to read-only catalog and golden dataset reads; writes require admin auth | `src/ecomm_agent/api/routes/catalog.py:27` GET only (405 on POST, 400 on bad id), `src/ecomm_agent/api/routes/golden.py:65,76` `verify_admin_key` `src/ecomm_agent/api/security.py:38` |
+| BR-011 | Every turn emits a Phoenix trace with `thread_id`; `input.value`/`output.value` only when `PHOENIX_RECORD_CONTENT=true` | `src/ecomm_agent/observability/tracing.py:34`, `src/ecomm_agent/api/routes/telegram.py:37`, `src/ecomm_agent/core/config.py:136` default `false` |
+| BR-012 | Golden evaluation passes only when `intent`, `guardrail_blocked`, `guardrail_reason`, and all `expected_product_ids` match and `expected_response_contains` is present | `src/ecomm_agent/services/evaluation.py:36` `_check_golden`; `supabase/migrations/20250918_golden_evaluation.sql:3` |
+| BR-013 | Telegram webhook is authenticated via secret token and rate-limited; duplicate updates are deduplicated | `src/ecomm_agent/api/security.py:12` `verify_telegram_secret`, `src/ecomm_agent/api/routes/telegram.py:24` `check_rate_limit`, `src/ecomm_agent/services/telegram.py:62` `secret_token` |
 
-### Catalog truth rules
+TBD where deterministic enforcement is incomplete: discount/shipping promise hallucination is constrained by prompt only and validated by URL/price checks in `llm.py:299`.
 
-- The assistant only answers with verified Alta Norma Fashion catalog data.
-- The assistant must not invent products that do not exist in the catalog.
-- Price, size, color, and stock must come from deterministic data, never from the LLM.
-- The website layer must consume the same catalog source of truth as the agent.
+## System Design
 
-### Policy truth rules
+### Components
 
-- Shipping, returns, payment, FAQ, and size guidance must come from verified knowledge-base documents.
-- If the verified documents do not support a claim, the assistant must not make that claim.
+| Component | Responsibility | Inputs | Outputs | Dependencies |
+|-----------|---------------|--------|---------|--------------|
+| FastAPI App | Receives webhooks, exposes health/catalog/golden, applies CORS + security headers | HTTP JSON (`TelegramUpdate`, query params) | JSON responses, 202/4xx/5xx | `src/ecomm_agent/main.py:65`, `src/ecomm_agent/api/security.py`, `pydantic-settings` |
+| Telegram Adapter | Sends `sendMessage`, registers webhook with secret token | `chat_id`, `text`, `webhook_url` | Telegram API JSON | `src/ecomm_agent/services/telegram.py:17`, `httpx`, `TELEGRAM_BOT_TOKEN` `core/config.py:65` |
+| LangGraph Orchestrator | Runs `intent_router → retrieval → guardrails → response_generator|fallback` | `AgentState(thread_id, user_message)` | `AgentState(intent, retrieved_products, guardrail_blocked, response_text)` | `src/ecomm_agent/agents/graph.py:68`, `src/ecomm_agent/services/chatbot.py:20` |
+| Intent Router | Deterministic intent via `COMMERCE_TERMS` | `user_message` | `intent` | `src/ecomm_agent/agents/nodes/intent_router.py:13` |
+| Retriever | Semantic (Chroma) → lexical fallback with deterministic filters; knowledge RAG for policies | `user_message`, `catalog`, `KB docs`, `vector_store` | `retrieved_products`, `retrieved_knowledge`, `requested_*`, `filters` | `src/ecomm_agent/services/retrieval.py:63`, `src/ecomm_agent/rag/vectorstore.py:268`, `src/ecomm_agent/services/catalog.py:176` |
+| Guardrails | Prompt injection (30 patterns) + out-of-scope vocabulary check | `user_message`, `allowed_vocabulary` | `guardrail_blocked`, `guardrail_reason=prompt_injection|out_of_scope` | `src/ecomm_agent/services/guardrails.py:158`, `src/ecomm_agent/core/domain.py:117` |
+| Catalog Source of Truth | JSON file, validated by Pydantic, canonicalized path | `CATALOG_PATH` | `list[Product]` | `src/ecomm_agent/schemas/catalog.py`, `data/catalog/products.json` |
+| Knowledge Base | Markdown policies/FAQ/size guide → RAG documents | `KNOWLEDGE_BASE_DIR` | `list[KnowledgeDoc]` | `src/ecomm_agent/rag/vectorstore.py:144` |
+| URL Resolver | Deterministic product page URL or None | `product.id`, `FRONTEND_BASE_URL` | `url` | `src/ecomm_agent/services/urls.py:11` |
+| LLM Coupler | Builds system+user prompt from verified state, calls Anthropic→Groq, validates output for hallucinated URLs/prices | `AgentState` | `response_text | None` (validated) | `src/ecomm_agent/services/llm.py:150,224,299` |
+| Observability | OTLP/HTTP to Phoenix Cloud via `arize-phoenix-otel` + `LangChainInstrumentor` | spans from every node | traces in Phoenix | `src/ecomm_agent/observability/tracing.py:65`, `src/ecomm_agent/main.py:39` |
+| Golden Dataset | Supabase CRUD + evaluation runner persisting `evaluation_runs/results` | `golden_queries` | `EvaluationSummary` with `phoenix_trace_id` | `src/ecomm_agent/services/supabase.py`, `src/ecomm_agent/services/evaluation.py:124` |
 
-### Safety and scope rules
+### Architecture
 
-- Prompt injection attempts must be blocked.
-- Out-of-domain requests must be rejected honestly.
-- The assistant must not claim discounts, shipping promises, or exceptions not present in the source of truth.
-
-### Reliability rules
-
-- If the primary LLM provider fails, the fallback provider should be used.
-- If both providers fail, the system must still return a deterministic safe response.
-
-### API exposure rules
-
-- Public web access is limited to read-only catalog and golden dataset endpoints.
-- Guardrails, LangGraph internals, and RAG internals must not be exposed as public website endpoints.
-
-### Observability & evaluation rules
-
-- Every turn emits a Phoenix trace (`webhook.telegram` → `agent.graph` → `llm.*`) with `thread_id` and `input.value`/`output.value` when `PHOENIX_RECORD_CONTENT=true`.
-- Every golden query has an expected `intent`, `guardrail`, and `product_ids` — evaluation fails if `missing_product` or `intent_mismatch`.
-
-## Tests That Protect Business Rules
-
-This project includes tests that target business behavior, not only implementation details.
-
-### Guardrails
-
-- [tests/test_guardrails.py](tests/test_guardrails.py)
-- Protects against:
-  prompt injection bypass attempts
-  out-of-scope domain drift
-  false blocking of valid product or policy queries
-
-### Chatbot behavior
-
-- [tests/test_chatbot.py](tests/test_chatbot.py)
-- Protects against:
-  failure to return a verified catalog match
-  dishonest fallback behavior
-  prompt injection leaking through the graph
-  policy questions failing to return verified knowledge
-
-### LLM provider fallback
-
-- [tests/test_llm_fallback.py](tests/test_llm_fallback.py)
-- Protects against:
-  provider outage causing total response failure
-  incorrect fallback order
-
-### Telegram webhook behavior
-
-- [tests/test_telegram_webhook.py](tests/test_telegram_webhook.py)
-- Protects against:
-  broken reply delivery flow
-  bad handling of empty Telegram messages
-  failures while sending replies back to Telegram
-
-### Catalog API behavior
-
-- [tests/test_catalog_api.py](tests/test_catalog_api.py)
-- Protects against:
-  wrong product payload shape
-  missing-product requests returning an ambiguous response
-  write attempts against read-only catalog routes
-  browser CORS failures for Lovable origins
-
-### Data and retrieval integrity
-
-- [tests/test_catalog.py](tests/test_catalog.py)
-- [tests/test_rag_documents.py](tests/test_rag_documents.py)
-- [tests/test_vectorstore_indexing.py](tests/test_vectorstore_indexing.py)
-- Protect against:
-  missing variants in catalog data
-  malformed RAG documents
-  broken Chroma indexing and retrieval behavior
-
-### Golden dataset
-
-- Supabase `public.golden_queries` (8 seeds) + `uv run ecomm-agent eval-golden` (100% pass when RAG/guardrails intact)
-- API `POST /api/golden/evaluate` — same runner, returns `EvaluationSummary` with `phoenix_trace_id`
-
-## Current Status
-
-- Telegram webhook flow has already been validated end to end with a real bot and `ngrok`.
-- The app currently works even without `data/vectorstore` because retrieval falls back to lexical matching.
-- Full embedding-backed retrieval remains pending until `uv run ecomm-agent index-rag` is executed.
-- The app now exposes read-only catalog endpoints for a Lovable-hosted website or product page layer.
-- Phoenix Cloud tracing is active (`PHOENIX_ENABLED=true`) with LangChainInstrumentor + manual spans (8 nodes).
-- Supabase golden dataset is seeded (`public.golden_queries` 8 rows) and evaluation runner is 8/8 via CLI and API.
-- The repo is prepared for deployment to Render from GitHub via `render.yaml` (now including Phoenix + Supabase vars).
-
-## Project Structure
-
-```text
-src/ecomm_agent/
-  api/routes/       FastAPI routes (catalog, health, telegram, golden)
-  agents/           LangGraph state, nodes, graph wiring
-  core/             configuration (pydantic-settings, supabase/phoenix helpers)
-  rag/              Chroma document building and indexing
-  schemas/          Pydantic schemas (catalog, golden, evaluation)
-  services/         catalog, inventory, guardrails, Telegram, LLM, retrieval, supabase, golden_dataset, evaluation
-  observability/    logging + tracing (phoenix.otel, LangChainInstrumentor)
-  scripts/          seed_golden, eval_golden
-  main.py           FastAPI app + lifespan (Phoenix + webhook)
-data/
-  catalog/          source-of-truth products
-  knowledge/        policies, FAQ, size guide
-supabase/
-  migrations/       20250918_golden_evaluation.sql (evaluation_runs/results)
-docs/
-  observability.md  Phoenix Cloud setup, spans, verification
-  golden-dataset.md Golden dataset + evaluation runner docs
-tests/              business and integration protection
+```mermaid
+flowchart TD
+    TG[Telegram User] --> WH[FastAPI POST /webhook/telegram<br/>api/routes/telegram.py:24<br/>verify_telegram_secret + rate_limit + dedup]
+    WH --> CB[chatbot.process_user_message<br/>services/chatbot.py:20<br/>StateGraph]
+    CB --> IR[intent_router<br/>agents/nodes/intent_router.py:32<br/>COMMERCE_TERMS]
+    IR -->|product_search / general_question| RT[retrieval<br/>agents/nodes/retrieval.py<br/>retrieve_products / retrieve_knowledge]
+    IR -->|out_of_domain| GR[guardrails<br/>agents/nodes/guardrails.py]
+    RT --> GR
+    GR -->|blocked or no_results| FB[fallback<br/>agents/nodes/fallback.py<br/>honest deterministic reply]
+    GR -->|allowed and has results| RG[response_generator<br/>agents/nodes/response_generator.py<br/>verified context rendering]
+    RG --> LLM{build_reply_text<br/>services/llm.py:299<br/>_validate_llm_output}
+    FB --> LLM
+    LLM -->|Anthropic OK| TGReply[Telegram sendMessage<br/>services/telegram.py:17]
+    LLM -->|Anthropic fail| GQ[Groq<br/>services/llm.py:224]
+    GQ -->|Groq OK| TGReply
+    GQ -->|both fail| DET[Deterministic state.response_text<br/>services/chatbot.py:80]
+    DET --> TGReply
+    RT -->|vector| CH[(Chroma persistent<br/>rag/vectorstore.py:268<br/>VECTOR_STORE_PATH)]
+    RT -->|lexical fallback| CAT[(Catalog JSON<br/>data/catalog/products.json<br/>services/catalog.py:72)]
+    RT --> KB[(Markdown KB<br/>data/knowledge<br/>rag/vectorstore.py:144)]
+    CAT --> RG
+    KB --> RG
+    CAT --> API1[GET /api/catalog<br/>api/routes/catalog.py:27]
+    CAT --> API2[GET /api/catalog/{id}<br/>400/404]
+    WH -.-> PH1[Phoenix span webhook.telegram]
+    CB -.-> PH2[Phoenix span agent.graph]
+    IR & RT & GR & RG & FB & LLM -.-> PH3[Phoenix spans intent / retrieval / guardrails / llm.*]
+    EV[Evaluation Runner<br/>services/evaluation.py:124] -->|list| SUP[(Supabase public.golden_queries)]
+    EV -->|invoke| CB
+    EV -.-> PH4[Phoenix evaluation.run / evaluation.query:slug]
+    EV -->|persist| SUP2[(evaluation_runs / evaluation_results<br/>supabase/migrations/20250918_golden_evaluation.sql)]
+    SUP --> API3[GET /api/golden* / POST with ADMIN_API_KEY]
+    API1 & API2 --> FE[Lovable Frontend<br/>FRONTEND_BASE_URL/products/{id}<br/>services/urls.py:11]
 ```
+
+Correct order is `intent_router → retrieval → guardrails → response_generator|fallback → llm`, matching `src/ecomm_agent/agents/graph.py:99`.
+
+## Tech Stack
+
+| Layer | Technology | Version / Path | Purpose |
+|-------|------------|----------------|---------|
+| Language | Python | 3.11-slim (`Dockerfile:1`) | Runtime |
+| Web | FastAPI, Uvicorn[standard], httpx | `fastapi>=0.139.0`, `uvicorn>=0.35.0`, `httpx>=0.28.1` `pyproject.toml:7` | Webhook + external calls |
+| Security | slowapi (rate limit), CORSMiddleware, security headers | `slowapi>=0.1.9` | Rate limiting, CORS, hardening |
+| Agent | LangGraph, LangChain, langchain-chroma, openai | `langgraph>=1.2.7`, `langchain>=0.3.27`, `langchain-chroma>=0.2.5`, `openai>=1.95.1`, `chromadb>=1.0.15` | Orchestration + RAG |
+| Validation | Pydantic, pydantic-settings | `pydantic-settings>=2.10.1` | Schemas + env |
+| Embeddings | OpenAI Embeddings | `text-embedding-3-small` `core/config.py:35` | Vector indexing only |
+| Generation | Anthropic (primary) + Groq (fallback) | `claude-sonnet-4-20250514`, `llama-3.3-70b-versatile` `core/config.py:41,56` | Reply generation + validation `llm.py:299` |
+| Catalog | JSON file + Pydantic `Product` | `data/catalog/products.json` | Source of truth |
+| Knowledge | Markdown files | `data/knowledge/` | Policy/FAQ/size |
+| Observability | Arize Phoenix Cloud + OpenTelemetry | `arize-phoenix-otel>=0.8.0`, `opentelemetry-*>=1.27.0`, `openinference-*` | Tracing `observability/tracing.py:65` |
+| Evaluation | Supabase + PostgREST | `supabase>=2.15.0` | Golden dataset + history |
+| Infra | Docker, docker-compose, Render | `Dockerfile`, `docker-compose.yml`, `render.yaml` | Container + deploy |
+| Tooling | uv, hatchling, pytest, ruff | `uv.lock` `--frozen` | Build/test/lint |
+
+## Data Flow
+
+1. Telegram posts JSON to `POST /webhook/telegram` `src/ecomm_agent/api/routes/telegram.py:24`: validated as `TelegramUpdate` `src/ecomm_agent/schemas/telegram.py:49` (`text` `max_length=4000`), `chat.id` becomes `thread_id`. Header `X-Telegram-Bot-Api-Secret-Token` verified against `TELEGRAM_WEBHOOK_SECRET_TOKEN` `src/ecomm_agent/api/security.py:12`; per-IP rate limit checked; duplicate `update_id` dedup window 600s.
+2. `process_user_message(thread_id, text)` `src/ecomm_agent/services/chatbot.py:20` does `GRAPH.invoke(AgentState)` → `intent_router` (`COMMERCE_TERMS` check) → `retrieval` (tries `retrieve_products` vector+lexical `services/retrieval.py:63` with filters `services/catalog.py:176`; `retrieve_knowledge` `retrieval.py:148`) → `guardrails` (injection then out-of-scope `services/guardrails.py:158`) forces `intent=out_of_domain` when `out_of_scope` → `response_generator` or `fallback` writes `response_text`.
+3. `build_reply_text(state)` `src/ecomm_agent/services/chatbot.py:80` calls `generate_response_text(state)` `src/ecomm_agent/services/llm.py:299`: builds `_build_product_context` deterministically from `filter_available_variants` `services/inventory.py:11` and `build_product_page_url` `services/urls.py:11`; `_build_user_prompt` + `_build_system_prompt` → Anthropic `services/llm.py:150`; on failure Groq `llm.py:224`; both outputs validated by `_validate_llm_output` (hallucinated URLs/prices fall back to `state.response_text`).
+4. `send_text_message(chat_id, response_text)` `src/ecomm_agent/services/telegram.py:17` posts to `https://api.telegram.org/bot{token}/sendMessage`; webhook returns `202` (verbose in dev, minimized in production `src/ecomm_agent/api/routes/telegram.py:115`). `PHOENIX_ENABLED` spans `webhook.telegram → agent.graph → intent_router/retrieval/guardrails/llm.* → telegram.sendMessage` `src/ecomm_agent/observability/tracing.py:65`.
+
+## Decisions
+
+See `ADR.md` for historical log. Current highlights:
+
+1. **LangGraph over single prompt chain** — explicit nodes for intent, retrieval, guardrails, response, fallback enable inspection and safer extensions.
+2. **Deterministic catalog over LLM facts** — highest hallucination risk fields come from `load_catalog` and `filter_available_variants`, never from generation.
+3. **Guardrails before generation, after retrieval** — graph order `intent_router → retrieval → guardrails` `agents/graph.py:99` preserves cheap blocking while allowing retrieval context for fallback honesty.
+4. **Chroma as optional with lexical fallback** — works when `data/vectorstore` not indexed; full semantic indexing via `uv run ecomm-agent index-rag`.
+5. **Anthropic primary with Groq fallback + LLM output validation** — `llm.py:299` validates URLs and price hallucinations deterministically after generation.
+6. **OpenAI only for embeddings** — `OpenAIEmbeddings` `rag/vectorstore.py:240` isolated to retrieval.
+7. **Read-only catalog API** — `GET /api/catalog*` `api/routes/catalog.py:27` shares the same source-of-truth as the agent.
+8. **Phoenix Cloud OTLP/HTTP** — `arize-phoenix-otel` + `LangChainInstrumentor`, no local collector; `PHOENIX_RECORD_CONTENT=false` by default `core/config.py:136`.
+9. **Supabase as golden source** — `public.golden_queries` + `evaluation_runs/results` `supabase/migrations/20250918_golden_evaluation.sql:3`; RLS in `20250919_002_rls.sql`.
+10. **Hardened deployment** — non-root Docker `Dockerfile:7`, healthcheck, webhook secret `services/telegram.py:62`, admin key on golden writes, tight CORS `main.py:81`, rate limits `api/security.py:38`, security headers, `.env.example`.
+
+## Reliability
+
+- **Provider failover:** `Anthropic→Groq→deterministic` with swallowed exceptions `src/ecomm_agent/services/llm.py:318`.
+- **Retrieval degraded mode:** When Chroma not indexed, `load_vector_store()` returns `None` `src/ecomm_agent/rag/vectorstore.py:335` and lexical `search_catalog` serves requests.
+- **Tracing fail-safe:** `PHOENIX_ENABLED=false` or missing key is no-op `src/ecomm_agent/observability/tracing.py:46`.
+- **Supabase fail-safe:** `is_supabase_configured()` `src/ecomm_agent/services/supabase.py:12` → `503` for golden endpoints, `GET /api/catalog` still works.
+- **Ephemeral storage:** Render `VECTOR_STORE_PATH=/tmp/data/vectorstore` `render.yaml:33` is rebuildable cache; re-run `uv run ecomm-agent index-rag`.
+- **Webhook resilience:** Empty-message guard `api/routes/telegram.py:47`, 20s `httpx` timeout `services/telegram.py:47`, `X-Content-Type-Options: nosniff` etc. `main.py:81`, rate limits per IP `api/security.py:56`.
+
+## Testing
+
+```bash
+uv sync --extra dev
+uv run pytest
+uv run ruff check src tests
+```
+
+| Suite | File | Protects |
+|-------|------|----------|
+| Guardrails | `tests/test_guardrails.py` | prompt injection bypass, out-of-scope drift, false blocking of valid queries |
+| Chatbot behavior | `tests/test_chatbot.py` | verified catalog match, honest fallback, injection not leaking, knowledge answering |
+| LLM fallback | `tests/test_llm_fallback.py` | provider outage → fallback order, validation fallback |
+| Telegram webhook | `tests/test_telegram_webhook.py` | reply delivery, empty message handling, send failure, auth/rate-limit (with env) |
+| Catalog API | `tests/test_catalog_api.py` | payload shape, 400/404, 405 on POST, CORS |
+| Data & retrieval | `tests/test_catalog.py`, `tests/test_rag_documents.py`, `tests/test_vectorstore_indexing.py` | variant integrity, RAG document shape, Chroma indexing |
+
+**Golden dataset regression:**
+
+```bash
+uv run ecomm-agent seed-golden        # idempotent 8 canonical queries
+uv run ecomm-agent eval-golden        # 8/8 when RAG/guardrails intact; fails on missing_product / intent_mismatch
+curl -X POST http://localhost:8000/api/golden/evaluate -H "Authorization: Bearer $ADMIN_API_KEY" | jq .pass_rate
+```
+
+`Supabase public.golden_queries (8 seeds) + evaluation_runs/results + POST /api/golden/evaluate → EvaluationSummary with phoenix_trace_id` `docs/golden-dataset.md`.
+
+## Limitations
+
+- Vector store ephemeral on Render `render.yaml:33` until external DB (Qdrant/pgvector); requires rebuild per deploy.
+- No persistent per-thread checkpointing (`graph.py:112` `compile()` without `checkpointer`); conversation memory is per-turn only.
+- Intent taxonomy is `product_search | general_question | out_of_domain` (guardrail-forced); `order status` from `AGENTS.md` not implemented — `TBD — requires confirmation` for future.
+- Size `OS` (one-size) accessories not filterable via `SIZE_NORMALIZATION` `services/catalog.py:24` (`S/M/L/XL` only).
+- Price extraction regex `PRICE_PATTERN` `catalog.py:46` narrow: `under/below/less than/up to $X` or `$X or less/max`; phrases like `cheaper than 500` may be missed.
+- Budget bypass now requires an in-domain token `services/guardrails.py:139` — adversarial `crypto under 1500` with a commerce term could still misclassify, `TBD — requires confirmation`.
+- `PHOENIX_RECORD_CONTENT=true` exports PII to Phoenix Cloud — default is `false` `core/config.py:136`; enable only for eval sessions.
+- `POST /api/golden/evaluate` runs synchronously and can be slow; no queue or background job yet.
+- Catalog 30 products, 3 variants each; no pagination beyond `limit`/`offset` on golden endpoints.
+- Throughput/cost numbers not measured — `TBD — requires confirmation`.
 
 ## Local Setup
 
 ### Required environment
 
+See `.env.example` for full list.
+
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_PUBLIC_URL=https://your-public-url
+TELEGRAM_WEBHOOK_SECRET_TOKEN= # openssl rand -hex 32
 FRONTEND_BASE_URL=https://alta-norma-fashion.lovable.app
+ADMIN_API_KEY= # openssl rand -hex 32 for golden writes
 ANTHROPIC_API_KEY=...
 ANTHROPIC_MODEL=claude-sonnet-4-20250514
 GROQ_API_KEY=...
@@ -288,26 +204,18 @@ OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 VECTOR_STORE_PATH=./data/vectorstore
 KNOWLEDGE_BASE_DIR=./data/knowledge
-# Phoenix Cloud
-PHOENIX_ENABLED=true
+PHOENIX_ENABLED=false
 PHOENIX_API_KEY=ak-...
 PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces
 PHOENIX_PROJECT_NAME=langgraph-ecom-assistant
-PHOENIX_RECORD_CONTENT=true
-# Supabase Golden Dataset
+PHOENIX_RECORD_CONTENT=false
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_PROJECT_ID=<ref>
 SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
 
-`TELEGRAM_WEBHOOK_PUBLIC_URL` must be the public base URL, not the full webhook path. On startup, the app registers `/webhook/telegram` automatically when both Telegram settings are present.
-
-`OPENAI_API_KEY` and `OPENAI_EMBEDDING_MODEL` are only required for the embeddings layer. They are not used for final answer generation. The current generation path is `Anthropic -> Groq -> deterministic fallback`.
-
-`FRONTEND_BASE_URL` is the public Lovable frontend base URL. When it is configured, product-search responses can include links like `https://alta-norma-fashion.lovable.app/products/TSH-001`.
-
-`SUPABASE_SERVICE_ROLE_KEY` is server-side only (bypasses RLS) — never expose in frontend. Use `SUPABASE_ANON_KEY` for read-only browser access.
+`TELEGRAM_WEBHOOK_PUBLIC_URL` is the base URL, not the full path; `/webhook/telegram` appended. `OPENAI_API_KEY` only for embeddings. `FRONTEND_BASE_URL` yields `https://alta-norma-fashion.lovable.app/products/TSH-001`. `SUPABASE_SERVICE_ROLE_KEY` is server-side only.
 
 ### Run locally
 
@@ -322,202 +230,38 @@ uv run uvicorn ecomm_agent.main:app --reload
 uv run ecomm-agent index-rag
 ```
 
-Use this only when you want semantic retrieval through Chroma instead of lexical fallback.
-
 ### Seed and evaluate golden dataset
 
 ```bash
-uv run ecomm-agent seed-golden          # inserts 8 canonical queries into Supabase
-uv run ecomm-agent eval-golden          # runs 8/8 evaluation, emits Phoenix traces
+uv run ecomm-agent seed-golden
+uv run ecomm-agent eval-golden
 uv run ecomm-agent eval-golden --limit 2 --json
 ```
 
-Requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` and tables created via `supabase/migrations/20250918_golden_evaluation.sql` (golden_queries already via MVP, evaluation tables via second file).
-
-### Run tests
-
-```bash
-uv run pytest
-```
-
-### Run lint
-
-```bash
-uv run ruff check src tests
-```
+Requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` and tables from `supabase/migrations/20250918_golden_evaluation.sql` + `20250919_002_rls.sql`.
 
 ## Render Deployment
 
-This repo includes [render.yaml](render.yaml) for GitHub-based deployment on Render.
-
-### What Render will use
-
-- runtime: Docker
-- health check: `/health`
-- public HTTPS base URL for:
-  Telegram webhook delivery
-  Lovable catalog fetches
-  Phoenix trace export (Cloud)
-  Supabase golden dataset reads
-
-### Required Render environment variables
-
-Set these in Render before going live:
-
-- `TELEGRAM_WEBHOOK_PUBLIC_URL`
-  Use your final Render service URL, for example `https://your-service.onrender.com`
-- `TELEGRAM_BOT_TOKEN`
-- `ANTHROPIC_API_KEY`
-- `GROQ_API_KEY`
-- `OPENAI_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `PHOENIX_API_KEY`
-
-Already scaffolded in `render.yaml`:
-
-- `ENVIRONMENT=production`
-- `FRONTEND_BASE_URL=https://alta-norma-fashion.lovable.app`
-- `OPENAI_EMBEDDING_MODEL=text-embedding-3-small`
-- `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
-- `GROQ_MODEL=llama-3.3-70b-versatile`
-- `VECTOR_STORE_PATH=/tmp/data/vectorstore`
-- `PHOENIX_ENABLED=true`
-- `PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces`
-- `PHOENIX_PROJECT_NAME=langgraph-ecom-assistant`
-- `SUPABASE_PROJECT_ID` (derived URL)
-
-### Production notes
-
-- Render replaces `ngrok` as the public backend URL.
-- Lovable should point `VITE_API_BASE_URL` to the final Render service URL.
-- Telegram should point `TELEGRAM_WEBHOOK_PUBLIC_URL` to the same Render service URL.
-- `VECTOR_STORE_PATH=/tmp/data/vectorstore` is ephemeral on Render. Until you move to durable vector storage, treat Chroma indexing there as rebuildable cache, not persistent infrastructure.
-- Phoenix traces are exported via OTLP/HTTP to Cloud — no local collector needed. If `PHOENIX_API_KEY` is missing, traces are no-op.
-- Supabase golden dataset is read at runtime and via `/api/golden` — ensure `SUPABASE_SERVICE_ROLE_KEY` is set as `sync:false` in Render.
-- The app still works without a persisted vector store because lexical fallback remains active.
+See `render.yaml` (`runtime: docker`, `healthCheckPath: /health`). Set `TELEGRAM_WEBHOOK_PUBLIC_URL` to the Render URL, rotate `TELEGRAM_WEBHOOK_SECRET_TOKEN` and `ADMIN_API_KEY` via `sync:false`. Lovable `VITE_API_BASE_URL` points to the same Render URL. `VECTOR_STORE_PATH=/tmp/data/vectorstore` ephemeral, `PHOENIX_RECORD_CONTENT=false` by default.
 
 ## Demo Notes
 
-- The webhook path is `POST /webhook/telegram`.
-- The public read-only catalog endpoints are `GET /api/catalog` and `GET /api/catalog/{product_id}`.
-- The golden dataset endpoints are `GET /api/golden`, `GET /api/golden/count`, `GET /api/golden/by-slug/{slug}`, `POST /api/golden`, `POST /api/golden/evaluate`.
-- Telegram `chat.id` is used as the conversation thread identifier.
-- The current implementation supports real Telegram reply delivery through `sendMessage`.
-- For local public testing, `ngrok` works well as the webhook ingress layer.
-- For stable hosting, use the Render deployment target in this repo instead of `ngrok`.
-
-## Production Smoke Tests
-
-Replace `https://your-service.onrender.com` with the real Render base URL.
-
-### Health
-
-```bash
-curl https://your-service.onrender.com/health
-```
-
-Expected response:
-
-```json
-{"status":"ok"}
-```
-
-### Catalog detail
-
-```bash
-curl https://your-service.onrender.com/api/catalog/TSH-001
-```
-
-### Catalog list
-
-```bash
-curl https://your-service.onrender.com/api/catalog
-```
-
-### Golden dataset
-
-```bash
-curl https://your-service.onrender.com/api/golden/count
-curl https://your-service.onrender.com/api/golden?limit=2
-```
-
-### Evaluate golden dataset
-
-```bash
-curl -X POST https://your-service.onrender.com/api/golden/evaluate | jq '.pass_rate'
-```
-
-### Chat webhook simulation
-
-This tests the same webhook endpoint Telegram uses, without needing to send a real Telegram message.
-
-```bash
-curl -X POST https://your-service.onrender.com/webhook/telegram \
-  -H 'content-type: application/json' \
-  -d '{
-    "update_id": 1,
-    "message": {
-      "message_id": 99,
-      "chat": {"id": 12345},
-      "text": "do you have black running shoes under 1500?"
-    }
-  }'
-```
-
-Expected behavior:
-
-- the endpoint returns `202`
-- the response includes `response_text`
-- if `TELEGRAM_BOT_TOKEN` is configured correctly in production, the app will also attempt `sendMessage` back to that same `chat.id`
-- a Phoenix trace appears at `https://app.phoenix.arize.com` under `langgraph-ecom-assistant` with `webhook.telegram` → `evaluation.run` spans
+- Webhook: `POST /webhook/telegram` with `X-Telegram-Bot-Api-Secret-Token` when `TELEGRAM_WEBHOOK_SECRET_TOKEN` is set.
+- Catalog: `GET /api/catalog`, `GET /api/catalog/{product_id}` (400 on bad id, 404 on missing).
+- Golden: `GET /api/golden`, `GET /api/golden/count`, `GET /api/golden/by-slug/{slug}`, `POST /api/golden` (Bearer `ADMIN_API_KEY`), `POST /api/golden/evaluate` (Bearer), `GET /api/golden/evaluation/runs`.
 
 ## Catalog API
 
-The website layer should consume the same source-of-truth catalog used by the agent.
-
-### Endpoints
-
-`GET /api/catalog`
-
-- Returns the full catalog as `list[Product]`
-- Useful for category pages, listing views, or a future `/catalogo` page in Lovable
-
-`GET /api/catalog/{product_id}`
-
-- Returns one product as `Product`
-- Returns `404` with a clear message if the product does not exist
-- Best endpoint for a product detail page fed by an agent-shared URL
-
-### Contract
-
-- The response shape reuses the existing internal `Product` schema
-- The data comes from the same `data/catalog/products.json` source already used by the agent
-- These routes are read-only and only expose `GET`
-
-### CORS
-
-- The FastAPI app allows Lovable browser origins for catalog fetches
-- This is required so the frontend can call the API directly from the browser
+Same source-of-truth as the agent (`data/catalog/products.json`), read-only `GET`, CORS `allow_origin_regex=https://alta-norma-fashion\.lovable\.app` + `X-Content-Type-Options: nosniff` etc.
 
 ## Observability
 
-Arize Phoenix Cloud via OTLP/HTTP with LangChainInstrumentor auto-tracing + manual business spans (intent, retrieval, guardrails, LLM) including message content.
-
-- Traces: `webhook.telegram` → `agent.graph` → `intent_router`/`retrieval`/`guardrails`/`llm.anthropic|groq` → `telegram.sendMessage`
-- Every span includes `thread_id`; manual spans include `input.value`/`output.value` when `PHOENIX_RECORD_CONTENT=true`
-- See [docs/observability.md](docs/observability.md) for setup, env vars, and verification.
+Phoenix Cloud via OTLP/HTTP with `LangChainInstrumentor` + manual spans `intent_router`, `retrieval`, `guardrails`, `llm.anthropic|groq` including `input.value`/`output.value` only when `PHOENIX_RECORD_CONTENT=true` — see `docs/observability.md`.
 
 ## Golden Dataset
 
-Supabase `public.golden_queries` (8 seeds) as source of truth for evaluation, plus `evaluation_runs`/`evaluation_results` for history.
-
-- Seed: `uv run ecomm-agent seed-golden` (idempotent)
-- Evaluate: `uv run ecomm-agent eval-golden` / `POST /api/golden/evaluate` — 8/8 pass when RAG/guardrails intact, fails on `missing_product`/`intent_mismatch`
-- Each result links to Phoenix via `phoenix_trace_id` → `https://app.phoenix.arize.com/projects/<project>/traces/<id>`
-- See [docs/golden-dataset.md](docs/golden-dataset.md) and `supabase/migrations/20250918_golden_evaluation.sql`.
+Supabase `public.golden_queries` (8 seeds) + `evaluation_runs/results`; see `docs/golden-dataset.md` and `supabase/migrations/20250919_002_rls.sql` for RLS.
 
 ## Maintenance
 
-See [MAINTENANCE.md](MAINTENANCE.md) for operational notes, reindexing guidance, and deployment considerations.
+See `MAINTENANCE.md`.

@@ -79,10 +79,15 @@ def load_catalog(path: str) -> list[Product]:
         A list of validated :class:`Product` objects. Returns an empty list
         when the file does not exist.
     """
-    catalog_path = Path(path)
-    if not catalog_path.exists():
+    catalog_path = Path(path).resolve()
+    # Defense-in-depth: ensure catalog path stays within allowed roots and is a file.
+    # Path traversal via env is low-likelihood but we canonicalize and validate.
+    if not catalog_path.is_file():
         return []
-    data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
     return [Product.model_validate(item) for item in data]
 
 

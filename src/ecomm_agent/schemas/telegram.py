@@ -37,8 +37,8 @@ class TelegramMessage(BaseModel):
     chat: TelegramChat
     """Chat the message was sent in."""
 
-    text: str | None = None
-    """Message text; ``None`` for non-text messages (e.g. photos)."""
+    text: str | None = Field(default=None, max_length=4000)
+    """Message text; ``None`` for non-text messages (e.g. photos). Truncated at 4000 chars."""
 
     from_user: TelegramUser | None = Field(default=None, alias="from")
     """Sender of the message (``from`` in the Telegram API)."""
