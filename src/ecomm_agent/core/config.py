@@ -124,6 +124,44 @@ class Settings(BaseSettings):
     phoenix_record_content: bool = Field(default=True)
     """Whether to record input.value/output.value (user messages) in traces."""
 
+    # Supabase — golden dataset source of truth
+    supabase_url: str | None = Field(default=None)
+    """Supabase project URL (https://<ref>.supabase.co)."""
+
+    supabase_anon_key: str | None = Field(default=None)
+    """Supabase anon public key (read-only)."""
+
+    supabase_service_role_key: str | None = Field(default=None)
+    """Supabase service_role key (server-side, bypasses RLS). Alias: SUPABASE_SERVICE_ROLE_KEY."""
+
+    supabase_service_role: str | None = Field(default=None)
+    """Alias for SUPABASE_SERVICE_ROLE (without _KEY suffix) for .env compat."""
+
+    supabase_project_id: str | None = Field(default=None)
+    """Supabase project reference id."""
+
+    phoenix_arize_api_key: str | None = Field(default=None)
+    """Alias for PHOENIX_ARIZE_API_KEY (compat with current .env)."""
+
+    @property
+    def resolved_supabase_url(self) -> str | None:
+        """Resolve Supabase URL from SUPABASE_URL or SUPABASE_PROJECT_ID."""
+        if self.supabase_url:
+            return self.supabase_url
+        if self.supabase_project_id:
+            return f"https://{self.supabase_project_id}.supabase.co"
+        return None
+
+    @property
+    def resolved_supabase_service_key(self) -> str | None:
+        """Resolve service_role key from either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE."""
+        return self.supabase_service_role_key or self.supabase_service_role
+
+    @property
+    def resolved_phoenix_api_key(self) -> str | None:
+        """Resolve Phoenix API key from PHOENIX_API_KEY or PHOENIX_ARIZE_API_KEY."""
+        return self.phoenix_api_key or self.phoenix_arize_api_key
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ecomm_agent.api.routes.catalog import router as catalog_router
+from ecomm_agent.api.routes.golden import router as golden_router
 from ecomm_agent.api.routes.health import router as health_router
 from ecomm_agent.api.routes.telegram import router as telegram_router
 from ecomm_agent.core.config import settings
@@ -82,12 +83,13 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_allowed_origins,
         allow_origin_regex=settings.cors_allowed_origin_regex,
         allow_credentials=True,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
     app.include_router(catalog_router)
     app.include_router(health_router)
     app.include_router(telegram_router)
+    app.include_router(golden_router)
     return app
 
 

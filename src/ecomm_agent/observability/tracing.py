@@ -24,8 +24,9 @@ def _get_phoenix_headers() -> dict[str, str] | None:
     Phoenix Cloud expects api_key authentication.
     Returns None when no key is configured.
     """
-    if settings.phoenix_api_key:
-        return {"api_key": settings.phoenix_api_key}
+    key = settings.resolved_phoenix_api_key
+    if key:
+        return {"api_key": key}
     return None
 
 

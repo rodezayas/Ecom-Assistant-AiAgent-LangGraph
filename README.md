@@ -1,5 +1,8 @@
 # Intelligent Ecom Agent
 
+> No es otro chatbot que suena fluido: precios, tallas y stock nunca vienen del LLM, vienen del catálogo verificado.
+> Cada turno se traza en Arize Phoenix y se valida contra un golden dataset en Supabase — 8/8 en evaluación.
+
 Telegram sales assistant for Alta Norma Fashion, built to demonstrate production-minded AI engineering with FastAPI, LangGraph, deterministic guardrails, and optional Chroma-backed RAG.
 
 Public Telegram bot: `t.me/AltaNormaFashion_bot`
@@ -16,6 +19,8 @@ It is designed to show:
 - real Telegram webhook integration
 - a read-only web catalog API for product page rendering
 - regression tests that protect critical store behavior
+- observability with Arize Phoenix Cloud (OTLP/HTTP + OpenInference)
+- golden dataset + evaluation as source of truth in Supabase
 
 ## Problem Statement
 
@@ -27,6 +32,7 @@ This project is built around the opposite approach:
 - catalog and inventory facts come from verified local data
 - policy answers come from verified knowledge sources
 - unsafe or irrelevant requests are blocked before generation
+- every turn is traced and evaluable against a golden dataset
 
 That design is the core business value of the system.
 
@@ -35,7 +41,7 @@ That design is the core business value of the system.
 ### Main components
 
 - `FastAPI` receives Telegram webhook events
-- `FastAPI` also exposes read-only catalog endpoints for the website layer
+- `FastAPI` also exposes read-only catalog and golden dataset endpoints
 - `LangGraph` orchestrates the intent, retrieval, guardrails, response, and fallback flow
 - `JSON catalog` acts as the deterministic product source of truth
 - `Markdown knowledge base` stores policies, FAQ, and size guidance
@@ -43,12 +49,14 @@ That design is the core business value of the system.
 - `Anthropic` is the primary text generation provider
 - `Groq` is the fallback generation provider
 - `OpenAI Embeddings` is used only for vector indexing and similarity search
+- `Arize Phoenix Cloud` receives OTLP/HTTP traces with LangChainInstrumentor + manual business spans (input.value/output.value)
+- `Supabase` stores the golden dataset (`public.golden_queries`) and evaluation history (`evaluation_runs`/`evaluation_results`)
 
 ### Flow Diagram
 
 ```mermaid
 flowchart TD
-    A[Telegram Message] --> B[Webhook POST]
+    A[Telegram Message] --> B[Webhook POST /webhook/telegram]
     B --> C[LangGraph]
     C --> D[Intent Router]
     D --> E[Guardrails]
@@ -65,7 +73,15 @@ flowchart TD
     L --> O[Telegram Reply]
     M --> O
     N --> O
+    B --> P[Phoenix Trace webhook.telegram]
+    C --> Q[Phoenix Traces agent.graph / llm / retrieval]
+    R[Supabase Golden Queries] --> C
+    C --> S[Evaluation Runner]
+    S --> R
+    S --> T[Phoenix Trace evaluation.run]
 ```
+
+Observability and evaluation are orthogonal to the chat flow — every node emits spans to Phoenix, and every golden query can be replayed and scored against the same graph.
 
 ## Why These Decisions Were Made
 
@@ -111,7 +127,19 @@ flowchart TD
 - Why: the website should consume the exact same catalog source of truth as the agent, without duplicating data or exposing internal agent mechanics
 - Business impact: keeps Telegram replies, product pages, and future storefront UI aligned on the same verified catalog data
 
-For the full historical decision log, see [ADR.md](/home/rodezayas/LangGraph-Ecom-Assistant/ADR.md).
+### 8. Arize Phoenix Cloud for observability
+
+- Decision: export OTLP/HTTP traces to Phoenix Cloud via `arize-phoenix-otel` + `LangChainInstrumentor`, with manual spans for `intent`, `retrieval`, `guardrails`, `llm` including `input.value`/`output.value`
+- Why: Phoenix is OTLP-native, self-host-free (Cloud), and renders LangGraph traces with OpenInference conventions; `input.value` is required for golden dataset debugging
+- Business impact: per-turn latency, guardrail block rate, retrieval hit rate, and hallucination checks are inspectable in one UI
+
+### 9. Supabase as golden dataset source of truth
+
+- Decision: store `public.golden_queries` in Supabase (MVP, 1 table), with `supabase/migrations/20250918_golden_evaluation.sql` for `evaluation_runs`/`evaluation_results`
+- Why: the catalog is source of truth for products, Supabase is source of truth for expected behavior; SQL editor workflow is familiar and keeps evaluation history linkable to Phoenix via `phoenix_trace_id`
+- Business impact: regression is measurable — `uv run ecomm-agent eval-golden` yields 8/8 or flags `missing_product:intent_mismatch`
+
+For the full historical decision log, see [ADR.md](ADR.md).
 
 ## Business Rules
 
@@ -142,8 +170,13 @@ These are the rules the assistant is built around.
 
 ### API exposure rules
 
-- Public web access is limited to read-only catalog endpoints.
+- Public web access is limited to read-only catalog and golden dataset endpoints.
 - Guardrails, LangGraph internals, and RAG internals must not be exposed as public website endpoints.
+
+### Observability & evaluation rules
+
+- Every turn emits a Phoenix trace (`webhook.telegram` → `agent.graph` → `llm.*`) with `thread_id` and `input.value`/`output.value` when `PHOENIX_RECORD_CONTENT=true`.
+- Every golden query has an expected `intent`, `guardrail`, and `product_ids` — evaluation fails if `missing_product` or `intent_mismatch`.
 
 ## Tests That Protect Business Rules
 
@@ -151,7 +184,7 @@ This project includes tests that target business behavior, not only implementati
 
 ### Guardrails
 
-- [tests/test_guardrails.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_guardrails.py)
+- [tests/test_guardrails.py](tests/test_guardrails.py)
 - Protects against:
   prompt injection bypass attempts
   out-of-scope domain drift
@@ -159,7 +192,7 @@ This project includes tests that target business behavior, not only implementati
 
 ### Chatbot behavior
 
-- [tests/test_chatbot.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_chatbot.py)
+- [tests/test_chatbot.py](tests/test_chatbot.py)
 - Protects against:
   failure to return a verified catalog match
   dishonest fallback behavior
@@ -168,14 +201,14 @@ This project includes tests that target business behavior, not only implementati
 
 ### LLM provider fallback
 
-- [tests/test_llm_fallback.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_llm_fallback.py)
+- [tests/test_llm_fallback.py](tests/test_llm_fallback.py)
 - Protects against:
   provider outage causing total response failure
   incorrect fallback order
 
 ### Telegram webhook behavior
 
-- [tests/test_telegram_webhook.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_telegram_webhook.py)
+- [tests/test_telegram_webhook.py](tests/test_telegram_webhook.py)
 - Protects against:
   broken reply delivery flow
   bad handling of empty Telegram messages
@@ -183,7 +216,7 @@ This project includes tests that target business behavior, not only implementati
 
 ### Catalog API behavior
 
-- [tests/test_catalog_api.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_catalog_api.py)
+- [tests/test_catalog_api.py](tests/test_catalog_api.py)
 - Protects against:
   wrong product payload shape
   missing-product requests returning an ambiguous response
@@ -192,13 +225,18 @@ This project includes tests that target business behavior, not only implementati
 
 ### Data and retrieval integrity
 
-- [tests/test_catalog.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_catalog.py)
-- [tests/test_rag_documents.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_rag_documents.py)
-- [tests/test_vectorstore_indexing.py](/home/rodezayas/LangGraph-Ecom-Assistant/tests/test_vectorstore_indexing.py)
+- [tests/test_catalog.py](tests/test_catalog.py)
+- [tests/test_rag_documents.py](tests/test_rag_documents.py)
+- [tests/test_vectorstore_indexing.py](tests/test_vectorstore_indexing.py)
 - Protect against:
   missing variants in catalog data
   malformed RAG documents
   broken Chroma indexing and retrieval behavior
+
+### Golden dataset
+
+- Supabase `public.golden_queries` (8 seeds) + `uv run ecomm-agent eval-golden` (100% pass when RAG/guardrails intact)
+- API `POST /api/golden/evaluate` — same runner, returns `EvaluationSummary` with `phoenix_trace_id`
 
 ## Current Status
 
@@ -206,22 +244,31 @@ This project includes tests that target business behavior, not only implementati
 - The app currently works even without `data/vectorstore` because retrieval falls back to lexical matching.
 - Full embedding-backed retrieval remains pending until `uv run ecomm-agent index-rag` is executed.
 - The app now exposes read-only catalog endpoints for a Lovable-hosted website or product page layer.
-- The repo is prepared for deployment to Render from GitHub via `render.yaml`.
+- Phoenix Cloud tracing is active (`PHOENIX_ENABLED=true`) with LangChainInstrumentor + manual spans (8 nodes).
+- Supabase golden dataset is seeded (`public.golden_queries` 8 rows) and evaluation runner is 8/8 via CLI and API.
+- The repo is prepared for deployment to Render from GitHub via `render.yaml` (now including Phoenix + Supabase vars).
 
 ## Project Structure
 
 ```text
 src/ecomm_agent/
-  api/              FastAPI routes
+  api/routes/       FastAPI routes (catalog, health, telegram, golden)
   agents/           LangGraph state, nodes, graph wiring
-  core/             configuration and shared domain concerns
+  core/             configuration (pydantic-settings, supabase/phoenix helpers)
   rag/              Chroma document building and indexing
-  schemas/          Pydantic schemas
-  services/         catalog, inventory, guardrails, Telegram, LLM, retrieval
-  observability/    logging setup
+  schemas/          Pydantic schemas (catalog, golden, evaluation)
+  services/         catalog, inventory, guardrails, Telegram, LLM, retrieval, supabase, golden_dataset, evaluation
+  observability/    logging + tracing (phoenix.otel, LangChainInstrumentor)
+  scripts/          seed_golden, eval_golden
+  main.py           FastAPI app + lifespan (Phoenix + webhook)
 data/
   catalog/          source-of-truth products
   knowledge/        policies, FAQ, size guide
+supabase/
+  migrations/       20250918_golden_evaluation.sql (evaluation_runs/results)
+docs/
+  observability.md  Phoenix Cloud setup, spans, verification
+  golden-dataset.md Golden dataset + evaluation runner docs
 tests/              business and integration protection
 ```
 
@@ -241,6 +288,17 @@ OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 VECTOR_STORE_PATH=./data/vectorstore
 KNOWLEDGE_BASE_DIR=./data/knowledge
+# Phoenix Cloud
+PHOENIX_ENABLED=true
+PHOENIX_API_KEY=ak-...
+PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces
+PHOENIX_PROJECT_NAME=langgraph-ecom-assistant
+PHOENIX_RECORD_CONTENT=true
+# Supabase Golden Dataset
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_PROJECT_ID=<ref>
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ```
 
 `TELEGRAM_WEBHOOK_PUBLIC_URL` must be the public base URL, not the full webhook path. On startup, the app registers `/webhook/telegram` automatically when both Telegram settings are present.
@@ -248,6 +306,8 @@ KNOWLEDGE_BASE_DIR=./data/knowledge
 `OPENAI_API_KEY` and `OPENAI_EMBEDDING_MODEL` are only required for the embeddings layer. They are not used for final answer generation. The current generation path is `Anthropic -> Groq -> deterministic fallback`.
 
 `FRONTEND_BASE_URL` is the public Lovable frontend base URL. When it is configured, product-search responses can include links like `https://alta-norma-fashion.lovable.app/products/TSH-001`.
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-side only (bypasses RLS) — never expose in frontend. Use `SUPABASE_ANON_KEY` for read-only browser access.
 
 ### Run locally
 
@@ -264,6 +324,16 @@ uv run ecomm-agent index-rag
 
 Use this only when you want semantic retrieval through Chroma instead of lexical fallback.
 
+### Seed and evaluate golden dataset
+
+```bash
+uv run ecomm-agent seed-golden          # inserts 8 canonical queries into Supabase
+uv run ecomm-agent eval-golden          # runs 8/8 evaluation, emits Phoenix traces
+uv run ecomm-agent eval-golden --limit 2 --json
+```
+
+Requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` and tables created via `supabase/migrations/20250918_golden_evaluation.sql` (golden_queries already via MVP, evaluation tables via second file).
+
 ### Run tests
 
 ```bash
@@ -278,7 +348,7 @@ uv run ruff check src tests
 
 ## Render Deployment
 
-This repo includes [render.yaml](/home/rodezayas/LangGraph-Ecom-Assistant/render.yaml) for GitHub-based deployment on Render.
+This repo includes [render.yaml](render.yaml) for GitHub-based deployment on Render.
 
 ### What Render will use
 
@@ -287,6 +357,8 @@ This repo includes [render.yaml](/home/rodezayas/LangGraph-Ecom-Assistant/render
 - public HTTPS base URL for:
   Telegram webhook delivery
   Lovable catalog fetches
+  Phoenix trace export (Cloud)
+  Supabase golden dataset reads
 
 ### Required Render environment variables
 
@@ -298,6 +370,10 @@ Set these in Render before going live:
 - `ANTHROPIC_API_KEY`
 - `GROQ_API_KEY`
 - `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PHOENIX_API_KEY`
 
 Already scaffolded in `render.yaml`:
 
@@ -307,6 +383,10 @@ Already scaffolded in `render.yaml`:
 - `ANTHROPIC_MODEL=claude-sonnet-4-20250514`
 - `GROQ_MODEL=llama-3.3-70b-versatile`
 - `VECTOR_STORE_PATH=/tmp/data/vectorstore`
+- `PHOENIX_ENABLED=true`
+- `PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces`
+- `PHOENIX_PROJECT_NAME=langgraph-ecom-assistant`
+- `SUPABASE_PROJECT_ID` (derived URL)
 
 ### Production notes
 
@@ -314,12 +394,15 @@ Already scaffolded in `render.yaml`:
 - Lovable should point `VITE_API_BASE_URL` to the final Render service URL.
 - Telegram should point `TELEGRAM_WEBHOOK_PUBLIC_URL` to the same Render service URL.
 - `VECTOR_STORE_PATH=/tmp/data/vectorstore` is ephemeral on Render. Until you move to durable vector storage, treat Chroma indexing there as rebuildable cache, not persistent infrastructure.
+- Phoenix traces are exported via OTLP/HTTP to Cloud — no local collector needed. If `PHOENIX_API_KEY` is missing, traces are no-op.
+- Supabase golden dataset is read at runtime and via `/api/golden` — ensure `SUPABASE_SERVICE_ROLE_KEY` is set as `sync:false` in Render.
 - The app still works without a persisted vector store because lexical fallback remains active.
 
 ## Demo Notes
 
 - The webhook path is `POST /webhook/telegram`.
 - The public read-only catalog endpoints are `GET /api/catalog` and `GET /api/catalog/{product_id}`.
+- The golden dataset endpoints are `GET /api/golden`, `GET /api/golden/count`, `GET /api/golden/by-slug/{slug}`, `POST /api/golden`, `POST /api/golden/evaluate`.
 - Telegram `chat.id` is used as the conversation thread identifier.
 - The current implementation supports real Telegram reply delivery through `sendMessage`.
 - For local public testing, `ngrok` works well as the webhook ingress layer.
@@ -353,6 +436,19 @@ curl https://your-service.onrender.com/api/catalog/TSH-001
 curl https://your-service.onrender.com/api/catalog
 ```
 
+### Golden dataset
+
+```bash
+curl https://your-service.onrender.com/api/golden/count
+curl https://your-service.onrender.com/api/golden?limit=2
+```
+
+### Evaluate golden dataset
+
+```bash
+curl -X POST https://your-service.onrender.com/api/golden/evaluate | jq '.pass_rate'
+```
+
 ### Chat webhook simulation
 
 This tests the same webhook endpoint Telegram uses, without needing to send a real Telegram message.
@@ -375,6 +471,7 @@ Expected behavior:
 - the endpoint returns `202`
 - the response includes `response_text`
 - if `TELEGRAM_BOT_TOKEN` is configured correctly in production, the app will also attempt `sendMessage` back to that same `chat.id`
+- a Phoenix trace appears at `https://app.phoenix.arize.com` under `langgraph-ecom-assistant` with `webhook.telegram` → `evaluation.run` spans
 
 ## Catalog API
 
@@ -406,8 +503,21 @@ The website layer should consume the same source-of-truth catalog used by the ag
 
 ## Observability
 
-Arize Phoenix Cloud via OTLP/HTTP with LangChainInstrumentor auto-tracing + manual business spans (intent, retrieval, guardrails, LLM) including message content. See [docs/observability.md](docs/observability.md).
+Arize Phoenix Cloud via OTLP/HTTP with LangChainInstrumentor auto-tracing + manual business spans (intent, retrieval, guardrails, LLM) including message content.
+
+- Traces: `webhook.telegram` → `agent.graph` → `intent_router`/`retrieval`/`guardrails`/`llm.anthropic|groq` → `telegram.sendMessage`
+- Every span includes `thread_id`; manual spans include `input.value`/`output.value` when `PHOENIX_RECORD_CONTENT=true`
+- See [docs/observability.md](docs/observability.md) for setup, env vars, and verification.
+
+## Golden Dataset
+
+Supabase `public.golden_queries` (8 seeds) as source of truth for evaluation, plus `evaluation_runs`/`evaluation_results` for history.
+
+- Seed: `uv run ecomm-agent seed-golden` (idempotent)
+- Evaluate: `uv run ecomm-agent eval-golden` / `POST /api/golden/evaluate` — 8/8 pass when RAG/guardrails intact, fails on `missing_product`/`intent_mismatch`
+- Each result links to Phoenix via `phoenix_trace_id` → `https://app.phoenix.arize.com/projects/<project>/traces/<id>`
+- See [docs/golden-dataset.md](docs/golden-dataset.md) and `supabase/migrations/20250918_golden_evaluation.sql`.
 
 ## Maintenance
 
-See [MAINTENANCE.md](/home/rodezayas/LangGraph-Ecom-Assistant/MAINTENANCE.md) for operational notes, reindexing guidance, and deployment considerations.
+See [MAINTENANCE.md](MAINTENANCE.md) for operational notes, reindexing guidance, and deployment considerations.

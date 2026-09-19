@@ -44,3 +44,11 @@ services:
         value: ecomm-agent-api
       - key: PHOENIX_RECORD_CONTENT
         value: "true"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_PROJECT_ID
+        sync: false

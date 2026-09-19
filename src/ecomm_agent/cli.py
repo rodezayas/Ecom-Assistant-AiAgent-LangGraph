@@ -20,5 +20,16 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "index-rag":
         build_and_index_default_vector_store()
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "seed-golden":
+        from ecomm_agent.scripts.seed_golden import main as seed_main
+
+        seed_main()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "eval-golden":
+        from ecomm_agent.scripts.eval_golden import main as eval_main
+
+        # Pass remaining args (e.g. --limit 2)
+        eval_main(sys.argv[2:])
+        return
 
     uvicorn.run("ecomm_agent.main:app", host="0.0.0.0", port=8000, reload=False)
